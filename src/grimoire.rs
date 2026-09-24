@@ -34,6 +34,8 @@ pub enum Item {
     Omen(Omen),
     /// 神聖魔法を唱えて初めて現れる
     Holy,
+    /// 作者を呼んで初めて現れる
+    Summon,
 }
 
 impl Item {
@@ -65,6 +67,7 @@ impl Item {
                 Locale::En => format!("omen \"{}\"", o.name(l)),
             },
             Item::Holy => l.pick("神聖魔法", "holy spells").into(),
+            Item::Summon => l.pick("召喚魔法", "summoning").into(),
         }
     }
 }
@@ -93,12 +96,14 @@ pub enum Mark {
     Forbidden,
     Doom(Doom),
     Holy,
+    Summon,
 }
 
 impl Mark {
     pub fn of(c: &MagicCircle, doom: Option<Doom>) -> Self {
         match doom {
             _ if c.holy => Mark::Holy,
+            _ if c.summoned => Mark::Summon,
             Some(d) => Mark::Doom(d),
             None if c.forbidden => Mark::Forbidden,
             None => Mark::None,
@@ -111,6 +116,7 @@ impl Mark {
             Mark::Forbidden => Some("forbidden".into()),
             Mark::Doom(d) => Some(format!("doom:{}", d.key())),
             Mark::Holy => Some("holy".into()),
+            Mark::Summon => Some("summon".into()),
         }
     }
 
@@ -120,6 +126,7 @@ impl Mark {
             Some(d) => Doom::from_key(d).map_or(Mark::Forbidden, Mark::Doom),
             None if key == "forbidden" => Mark::Forbidden,
             None if key == "holy" => Mark::Holy,
+            None if key == "summon" => Mark::Summon,
             None => Mark::None,
         }
     }
@@ -130,6 +137,7 @@ impl Mark {
             Mark::Forbidden => vec![Item::Forbidden],
             Mark::Doom(d) => vec![Item::Forbidden, Item::Doom(d)],
             Mark::Holy => vec![Item::Holy],
+            Mark::Summon => vec![Item::Summon],
         }
     }
 }
@@ -310,11 +318,11 @@ impl Grimoire {
         )
     }
 
-    /// 神聖魔法を唱えた延べの回数
-    fn holy(&self) -> u64 {
+    /// その印の呪文を唱えた延べの回数
+    fn casts_of(&self, mark: Mark) -> u64 {
         self.entries
             .iter()
-            .filter(|e| e.mark == Mark::Holy)
+            .filter(|e| e.mark == mark)
             .map(|e| e.count)
             .sum()
     }
@@ -324,7 +332,7 @@ impl Grimoire {
         let marked = || {
             self.entries
                 .iter()
-                .filter(|e| !matches!(e.mark, Mark::None | Mark::Holy))
+                .filter(|e| matches!(e.mark, Mark::Forbidden | Mark::Doom(_)))
         };
         let dooms = marked()
             .filter_map(|e| match e.mark {
@@ -469,7 +477,7 @@ pub fn show(g: &Grimoire, l: Locale) -> String {
         ));
     }
     // 神聖魔法の欄も、唱えるまで出さない
-    let holy = g.holy();
+    let holy = g.casts_of(Mark::Holy);
     if holy > 0 {
         s.push_str(&match l {
             Locale::Ja => format!(
@@ -482,6 +490,23 @@ pub fn show(g: &Grimoire, l: Locale) -> String {
                 pad("holy", 10),
                 "✦",
                 plural(holy, "time")
+            ),
+        });
+    }
+    // 召喚魔法の欄も、作者を呼ぶまで出さない
+    let summons = g.casts_of(Mark::Summon);
+    if summons > 0 {
+        s.push_str(&match l {
+            Locale::Ja => format!(
+                "\n  {} {:>6}  呼んだ回数 {summons} 回\n",
+                pad("召喚魔法", 10),
+                "✦"
+            ),
+            Locale::En => format!(
+                "\n  {} {:>6}  summoned {}\n",
+                pad("summoning", 10),
+                "✦",
+                plural(summons, "time")
             ),
         });
     }
@@ -664,6 +689,22 @@ mod tests {
         let text = g.to_text();
         assert!(text.contains(" 2 holy\n"));
         assert_eq!(Grimoire::parse(&text), g);
+    }
+
+    #[test]
+    fn summons_open_their_own_section() {
+        let mut g = Grimoire::default();
+        let mut c = MagicCircle::from_command("yukihirop");
+        c.summon();
+        assert!(g.record(&c, None).contains(&Item::Summon));
+        let page = show(&g, Locale::Ja);
+        assert!(
+            page.contains("召喚魔法") && page.contains("呼んだ回数 1 回"),
+            "{page}"
+        );
+        assert!(!page.contains("禁呪") && !page.contains("神聖魔法"));
+        assert!(g.to_text().contains(" 1 summon\n"));
+        assert_eq!(Grimoire::parse(&g.to_text()), g);
     }
 
     #[test]

@@ -9,6 +9,7 @@ mod render;
 mod script;
 mod share;
 mod shell;
+mod summon;
 mod terminal;
 
 use std::io::IsTerminal;
@@ -274,13 +275,18 @@ fn main() -> ExitCode {
     // 神聖魔法は禁呪より、禁呪は暦より強い
     if holy::is_holy(&spell) {
         circle.sanctify();
+    } else if summon::is_summon(&spell) {
+        circle.summon();
     } else if forbidden::is_forbidden(&spell) {
         circle.forbid();
     } else if let Some(omen) = omen::Moment::now(env).and_then(omen::at) {
         circle.bless(omen);
     }
     if let Some(code) = opts.shatter {
-        if shatters(code, &config) {
+        // 作者はコマンドとしてはいないので見つからない（127）が、呼べば現れる
+        if code == NOT_FOUND && circle.summoned {
+            greet(l);
+        } else if shatters(code, &config) {
             break_circle(&circle, &spell, code, l);
         } else if code == 0 && circle.holy {
             thank(l);
@@ -356,13 +362,17 @@ fn main() -> ExitCode {
             }
             exit_code(status)
         }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && circle.summoned => {
+            greet(l);
+            ExitCode::from(NOT_FOUND as u8)
+        }
         Err(e) => {
             match l {
                 Locale::Ja => eprintln!("mahojin: 詠唱失敗: {}: {e}", args[0]),
                 Locale::En => eprintln!("mahojin: the spell failed: {}: {e}", args[0]),
             }
             ExitCode::from(if e.kind() == std::io::ErrorKind::NotFound {
-                127
+                NOT_FOUND as u8
             } else {
                 126
             })
@@ -405,6 +415,22 @@ fn break_circle(c: &MagicCircle, spell: &str, code: i32, l: Locale) {
             Locale::Ja => eprintln!("✦ 魔法陣が砕けた（終了コード {code}）"),
             Locale::En => eprintln!("✦ The circle shattered (exit {code})"),
         }
+    }
+}
+
+/// シェルがコマンドを見つけられなかったときの終了コード
+const NOT_FOUND: i32 = 127;
+
+/// 作者を呼んだときの挨拶。
+fn greet(l: Locale) {
+    if std::io::stderr().is_terminal() {
+        eprintln!(
+            "{}",
+            l.pick(
+                "✦ 召喚に応じて yukihirop が現れた。……が、特に何もせず帰っていった",
+                "✦ yukihirop answered the summons. ...and left without doing anything",
+            )
+        );
     }
 }
 
@@ -578,7 +604,8 @@ fn setup(
 
 /// 描いた魔法陣の下で名乗る言葉。出にくい格か禁呪を引いたときと、暦の兆しがあるときだけ。
 fn announced(c: &MagicCircle, l: Locale) -> Option<String> {
-    let rare = c.forbidden || c.holy || matches!(c.tier, Tier::Large | Tier::Ultimate);
+    let rare =
+        c.forbidden || c.holy || c.summoned || matches!(c.tier, Tier::Large | Tier::Ultimate);
     let names: Vec<&str> = rare
         .then(|| c.title(l))
         .into_iter()
@@ -590,6 +617,8 @@ fn announced(c: &MagicCircle, l: Locale) -> Option<String> {
 fn unfolded(spell: &str, c: &MagicCircle, l: Locale) -> String {
     let what = if c.holy {
         l.pick("神聖魔法展開", "Holy circle unfolded")
+    } else if c.summoned {
+        l.pick("召喚魔法展開", "Summoning circle unfolded")
     } else if c.forbidden {
         l.pick(
             "禁呪展開（超極大魔法）",

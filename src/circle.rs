@@ -201,6 +201,8 @@ pub const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
 pub const FORBIDDEN_HUE: f32 = 355.0;
 /// 神聖魔法の色相（金）
 pub const HOLY_HUE: f32 = 46.0;
+/// 召喚魔法の色相（藍）
+pub const SUMMON_HUE: f32 = 228.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MagicCircle {
@@ -231,6 +233,8 @@ pub struct MagicCircle {
     pub forbidden: bool,
     /// 神聖魔法。禁呪と同じく、`from_hash` では常に false
     pub holy: bool,
+    /// 召喚魔法。これも `from_hash` では常に false
+    pub summoned: bool,
     /// 暦の兆し。唱えた日時で決まるので、`from_hash` では常に `None`
     pub omen: Option<Omen>,
 }
@@ -270,6 +274,7 @@ impl MagicCircle {
             tier: Tier::from_roll(below(&mut rng, 100)),
             forbidden: false,
             holy: false,
+            summoned: false,
             omen: None,
         }
     }
@@ -288,6 +293,12 @@ impl MagicCircle {
         self.clockwise = true;
     }
 
+    /// 召喚魔法にする。形はハッシュのまま、銀と藍に染めて、引いた格にかかわらず極大魔法として描く。
+    pub fn summon(&mut self) {
+        self.summoned = true;
+        self.hue = SUMMON_HUE;
+    }
+
     /// 暦の色に染める。形はハッシュのまま。13 日の金曜日だけは逆さに回す。
     pub fn bless(&mut self, omen: Omen) {
         self.omen = Some(omen);
@@ -301,6 +312,8 @@ impl MagicCircle {
     pub fn title(&self, l: Locale) -> &'static str {
         if self.holy {
             l.pick("神聖魔法", "holy spell")
+        } else if self.summoned {
+            l.pick("召喚魔法", "summoning")
         } else if self.forbidden {
             l.pick("超極大魔法（禁呪）", "super ultimate spell (forbidden)")
         } else {
@@ -314,6 +327,8 @@ impl MagicCircle {
             48
         } else if self.forbidden {
             44
+        } else if self.summoned {
+            Tier::Ultimate.rows()
         } else {
             self.tier.rows()
         }

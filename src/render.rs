@@ -11,7 +11,7 @@ use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 
 use crate::circle::{
-    Band, FORBIDDEN_HUE, HOLY_HUE, Layout, MagicCircle, Ornament, Shape, Tier, unit,
+    Band, FORBIDDEN_HUE, HOLY_HUE, Layout, MagicCircle, Ornament, SUMMON_HUE, Shape, Tier, unit,
 };
 use crate::omen::Palette;
 use crate::script;
@@ -95,6 +95,14 @@ fn palette(c: &MagicCircle) -> Palette {
             particle: (50.0, 100.0, 94.0),
         };
     }
+    // 召喚魔法は藍の線に銀を添える
+    if c.summoned {
+        return Palette {
+            main: (c.hue, 70.0, 70.0),
+            sub: (215.0, 18.0, 86.0),
+            particle: (210.0, 40.0, 92.0),
+        };
+    }
     if let Some(omen) = c.omen {
         let mut p = omen.palette();
         p.main.0 = c.hue;
@@ -169,6 +177,11 @@ fn scene(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>) {
         // 禁呪と神聖魔法は、引いた格にかかわらず超極大魔法になる
         _ if c.forbidden || c.holy => {
             beyond(s, c, spell, t, &mut rng);
+            BAND_OUTER
+        }
+        // 召喚魔法は、引いた格にかかわらず極大魔法として描く
+        _ if c.summoned => {
+            ultimate(s, c, spell, t, &mut rng);
             BAND_OUTER
         }
         Tier::Ultimate => {
@@ -528,6 +541,10 @@ fn companion(c: &MagicCircle, spell: &str, index: u8, hue_shift: f32) -> MagicCi
         d.sanctify();
         // 金は黄緑に寄りやすいので、ずらし幅は禁呪より狭くする
         d.hue = (HOLY_HUE - hue_shift / 30.0) % 360.0;
+    }
+    if c.summoned {
+        d.summon();
+        d.hue = (SUMMON_HUE + hue_shift / 12.0) % 360.0;
     }
     // 暦の色も重ねた魔法陣まで染める。ずらし方は禁呪と同じく小さく
     if let Some(omen) = c.omen {
@@ -1201,6 +1218,18 @@ mod tests {
         assert!(!out.contains(",85%,65%)"));
         // 禁呪の赤は混ざらない
         assert!(!out.contains(&format!("hsl({FORBIDDEN_HUE:.0},")));
+    }
+
+    #[test]
+    fn summons_unfold_as_ultimate_in_indigo() {
+        let placements = |svg: &str| svg.matches(r#"<g transform="translate("#).count();
+        let mut c = MagicCircle::from_command("yukihirop");
+        c.summon();
+        let out = svg(&c, "yukihirop");
+        assert_eq!(placements(&out), 1 + orbit_count(&c) as usize);
+        assert!(out.contains(&format!("hsl({SUMMON_HUE:.0},70%,70%)")));
+        assert!(out.contains("hsl(215,18%,86%)"));
+        assert!(!out.contains(",85%,65%)"));
     }
 
     /// 帯が `band` の魔法陣になるコマンド
