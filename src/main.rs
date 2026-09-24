@@ -136,8 +136,11 @@ impl ArgError {
 
 /// maho 自身のオプションはコマンドより前だけに置ける。
 /// 最初のオプションでない引数（または `--` の次）から後ろは、すべてコマンドに渡す。
-fn parse_args(mut args: std::collections::VecDeque<String>) -> Result<Options, ArgError> {
-    let mut opts = Options::default();
+/// 誤りがあっても、そこまでに読んだ `--locale` はエラーの表示に使うので `opts` に残す。
+fn parse_args(
+    mut args: std::collections::VecDeque<String>,
+    opts: &mut Options,
+) -> Result<(), ArgError> {
     while let Some(arg) = args.front() {
         match arg.as_str() {
             "--explain" => opts.explain = true,
@@ -170,7 +173,7 @@ fn parse_args(mut args: std::collections::VecDeque<String>) -> Result<Options, A
         (true, _, false) => Err(ArgError::SetupWithCommand),
         (_, true, false) => Err(ArgError::GrimoireWithCommand),
         (false, false, true) => Err(ArgError::NoCommand),
-        _ => Ok(opts),
+        _ => Ok(()),
     }
 }
 
@@ -178,20 +181,16 @@ fn main() -> ExitCode {
     let env = |k: &str| std::env::var(k).ok();
     let config_path = locale::config_path(env);
     let config = config_path.as_deref().and_then(locale::read_config);
-    let parsed = parse_args(std::env::args().skip(1).collect());
-    let (l, source) = match &parsed {
-        Ok(Options {
-            locale: Some(l), ..
-        }) => (*l, Source::Flag),
-        _ => locale::detect(env, config),
+    let mut opts = Options::default();
+    let parsed = parse_args(std::env::args().skip(1).collect(), &mut opts);
+    let (l, source) = match opts.locale {
+        Some(l) => (l, Source::Flag),
+        None => locale::detect(env, config),
     };
-    let opts = match parsed {
-        Ok(o) => o,
-        Err(e) => {
-            eprintln!("maho: {}\n{}", e.message(l), usage(l));
-            return ExitCode::from(2);
-        }
-    };
+    if let Err(e) = parsed {
+        eprintln!("maho: {}\n{}", e.message(l), usage(l));
+        return ExitCode::from(2);
+    }
     if opts.setup {
         return setup(opts.locale, (l, source), config_path);
     }
@@ -495,7 +494,8 @@ mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Result<Options, ArgError> {
-        parse_args(args.iter().map(|s| s.to_string()).collect())
+        let mut opts = Options::default();
+        parse_args(args.iter().map(|s| s.to_string()).collect(), &mut opts).map(|()| opts)
     }
 
     fn cmd(args: &[&str]) -> Vec<String> {
@@ -566,6 +566,17 @@ mod tests {
             parse(&["--locale"]),
             Err(ArgError::MissingValue("--locale"))
         );
+    }
+
+    #[test]
+    fn locale_survives_errors() {
+        // 誤りの知らせも --locale の言語で出す
+        for args in [&["--locale", "en"][..], &["--locale", "en", "--nope", "ls"]] {
+            let mut opts = Options::default();
+            let args = args.iter().map(|s| s.to_string()).collect();
+            assert!(parse_args(args, &mut opts).is_err());
+            assert_eq!(opts.locale, Some(Locale::En));
+        }
     }
 
     #[test]
