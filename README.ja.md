@@ -7,7 +7,7 @@
 `mahojin` はどんな CLI コマンドの前にも付けられるラッパーです。コマンドを実行する前に、
 そのコマンド専用の魔法陣を端末に展開します。
 
-![mahojin のデモ](assets/demo.gif)
+![mahojin のデモ](https://raw.githubusercontent.com/yukihirop/mahojin/main/assets/demo.gif)
 
 ```console
 $ mahojin git status
@@ -23,7 +23,7 @@ $ mahojin git status
 - **仕事の邪魔はしません。**展開はおよそ 1 秒で、演出はすべて stderr に出ます。
   stdout・終了コード・パイプはそのままコマンドのものです
 
-![コマンドごとの魔法陣](assets/gallery.jpg)
+![コマンドごとの魔法陣](https://raw.githubusercontent.com/yukihirop/mahojin/main/assets/gallery.jpg)
 
 ## インストール
 

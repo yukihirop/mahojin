@@ -7,7 +7,7 @@ English | [日本語](README.ja.md)
 `mahojin` is a wrapper you can put in front of any CLI command. Before running the command,
 it unfolds a magic circle made just for that command, right in your terminal.
 
-![mahojin demo](assets/demo.gif)
+![mahojin demo](https://raw.githubusercontent.com/yukihirop/mahojin/main/assets/demo.gif)
 
 ```console
 $ mahojin git status
@@ -23,7 +23,7 @@ $ mahojin git status
 - **It stays out of your way.** The circle unfolds in about a second, and all of it goes to stderr.
   stdout, the exit code and pipes stay the command's own
 
-![A magic circle for each command](assets/gallery.jpg)
+![A magic circle for each command](https://raw.githubusercontent.com/yukihirop/mahojin/main/assets/gallery.jpg)
 
 ## Install
 
