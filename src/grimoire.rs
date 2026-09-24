@@ -3,15 +3,17 @@
 //! 置き場所は `$XDG_DATA_HOME/maho/grimoire`（無ければ `~/.local/share/maho/grimoire`）。
 //! コマンドは書かず、ハッシュと唱えた回数だけを 1 行ずつ残す。
 //! パラメータはハッシュから引き直せるので、それで足りる（[`MagicCircle::from_hash`]）。
+//! 禁呪かどうかだけはハッシュから分からないので、3 つめの欄に印を書く（`forbidden` か `doom:balse` など）。
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::circle::{Band, Layout, MagicCircle, Ornament, SYMMETRIES, Shape, Tier};
+use crate::forbidden::Doom;
 use crate::locale::Locale;
 use crate::script::Style;
 
-const HEADER: &str = "# maho grimoire v1";
+const HEADER: &str = "# maho grimoire v2";
 
 /// 集める項目。図鑑の 1 マス。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -23,6 +25,9 @@ pub enum Item {
     Symmetry(u8),
     Style(Style),
     Band(Band),
+    /// ここからは頁に並ばない隠し項目。禁呪を唱えて初めて図鑑に現れる
+    Forbidden,
+    Doom(Doom),
 }
 
 impl Item {
@@ -43,6 +48,11 @@ impl Item {
             Item::Band(b) => match l {
                 Locale::Ja => format!("{}の帯", b.name(l)),
                 Locale::En => format!("{} band", b.name(l)),
+            },
+            Item::Forbidden => l.pick("禁呪", "forbidden spells").into(),
+            Item::Doom(d) => match l {
+                Locale::Ja => format!("物語の呪文「{}」", d.name(l)),
+                Locale::En => format!("story spell \"{}\"", d.name(l)),
             },
         }
     }
@@ -65,16 +75,62 @@ pub fn pages() -> Vec<(&'static str, &'static str, Vec<Item>)> {
     ]
 }
 
+/// 禁呪の印。唱えた言葉から決まるので、ハッシュとは別に覚える
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Mark {
+    None,
+    Forbidden,
+    Doom(Doom),
+}
+
+impl Mark {
+    pub fn of(c: &MagicCircle, doom: Option<Doom>) -> Self {
+        match doom {
+            Some(d) => Mark::Doom(d),
+            None if c.forbidden => Mark::Forbidden,
+            None => Mark::None,
+        }
+    }
+
+    fn key(self) -> Option<String> {
+        match self {
+            Mark::None => None,
+            Mark::Forbidden => Some("forbidden".into()),
+            Mark::Doom(d) => Some(format!("doom:{}", d.key())),
+        }
+    }
+
+    /// 知らない印は、印が無いものとして読む
+    fn from_key(key: &str) -> Self {
+        match key.strip_prefix("doom:") {
+            Some(d) => Doom::from_key(d).map_or(Mark::Forbidden, Mark::Doom),
+            None if key == "forbidden" => Mark::Forbidden,
+            None => Mark::None,
+        }
+    }
+
+    fn hidden_items(self) -> Vec<Item> {
+        match self {
+            Mark::None => vec![],
+            Mark::Forbidden => vec![Item::Forbidden],
+            Mark::Doom(d) => vec![Item::Forbidden, Item::Doom(d)],
+        }
+    }
+}
+
 /// その魔法陣を見て埋まる項目。
-fn items_of(c: &MagicCircle) -> Vec<Item> {
+/// 禁呪は引いた格にかかわらず超極大魔法として描かれるので、本来の格は見たことにしない。
+fn items_of(c: &MagicCircle, mark: Mark) -> Vec<Item> {
     let mut items = vec![
-        Item::Tier(c.tier),
         Item::Shape(c.shape),
         Item::Layout(c.layout),
         Item::Symmetry(c.symmetry),
         Item::Style(c.hand.style),
         Item::Band(c.band),
     ];
+    if mark == Mark::None {
+        items.push(Item::Tier(c.tier));
+    }
     // 大星の陣では装飾が描かれないので、見たことにしない
     if c.layout != Layout::Grand {
         items.push(Item::Ornament(c.ornament));
@@ -82,13 +138,20 @@ fn items_of(c: &MagicCircle) -> Vec<Item> {
     items
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct Entry {
+    hash: [u8; 32],
+    count: u64,
+    mark: Mark,
+}
+
 /// 骨格。一目で形が違うと分かる組み合わせ（中心図形 × 陣形 × 格）。
 pub const SKELETONS: usize = Shape::ALL.len() * Layout::ALL.len() * Tier::ALL.len();
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Grimoire {
-    /// 初めて唱えた順に、ハッシュと唱えた回数
-    entries: Vec<([u8; 32], u64)>,
+    /// 初めて唱えた順に、ハッシュと唱えた回数と禁呪の印
+    entries: Vec<Entry>,
 }
 
 impl Grimoire {
@@ -97,8 +160,12 @@ impl Grimoire {
         let entries = text
             .lines()
             .filter_map(|line| {
-                let (hex, count) = line.split_once(' ')?;
-                Some((parse_hash(hex)?, count.trim().parse().ok()?))
+                let mut fields = line.split_whitespace();
+                Some(Entry {
+                    hash: parse_hash(fields.next()?)?,
+                    count: fields.next()?.parse().ok()?,
+                    mark: fields.next().map_or(Mark::None, Mark::from_key),
+                })
             })
             .collect();
         Grimoire { entries }
@@ -114,9 +181,12 @@ impl Grimoire {
 
     fn to_text(&self) -> String {
         let mut s = format!("{HEADER}\n");
-        for (hash, count) in &self.entries {
-            let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
-            s.push_str(&format!("{hex} {count}\n"));
+        for e in &self.entries {
+            let hex: String = e.hash.iter().map(|b| format!("{b:02x}")).collect();
+            match e.mark.key() {
+                Some(mark) => s.push_str(&format!("{hex} {} {mark}\n", e.count)),
+                None => s.push_str(&format!("{hex} {}\n", e.count)),
+            }
         }
         s
     }
@@ -132,36 +202,67 @@ impl Grimoire {
     }
 
     /// 唱えた魔法陣を記録し、今回初めて埋まった項目を返す。
-    pub fn record(&mut self, c: &MagicCircle) -> Vec<Item> {
-        // 前にも唱えた呪文なら、埋まる項目は無い
-        if let Some((_, count)) = self.entries.iter_mut().find(|(h, _)| *h == c.hash) {
-            *count += 1;
+    /// `doom` は、物語の滅びの呪文を唱えたときにどれだったか。
+    pub fn record(&mut self, c: &MagicCircle, doom: Option<Doom>) -> Vec<Item> {
+        let mark = Mark::of(c, doom);
+        let index = self.entries.iter().position(|e| e.hash == c.hash);
+        // 前にも唱えた呪文なら、埋まる項目は無い。
+        // ただし禁呪の印が無かった頃に記録したものなら、印だけ付け直す
+        if let Some(i) = index
+            && self.entries[i].mark >= mark
+        {
+            self.entries[i].count += 1;
             return Vec::new();
         }
-        let before = self.items();
-        self.entries.push((c.hash, 1));
-        items_of(c)
-            .into_iter()
-            .filter(|i| !before.contains(i))
+        let before = self.found();
+        match index {
+            Some(i) => {
+                self.entries[i].count += 1;
+                self.entries[i].mark = mark;
+            }
+            None => self.entries.push(Entry {
+                hash: c.hash,
+                count: 1,
+                mark,
+            }),
+        }
+        let mut new: Vec<Item> = items_of(c, mark);
+        new.extend(mark.hidden_items());
+        new.retain(|i| !before.contains(i));
+        new
+    }
+
+    fn circles(&self) -> impl Iterator<Item = (MagicCircle, &Entry)> + '_ {
+        self.entries
+            .iter()
+            .map(|e| (MagicCircle::from_hash(e.hash), e))
+    }
+
+    /// 頁に並ぶ項目のうち、埋まったもの
+    pub fn items(&self) -> HashSet<Item> {
+        self.circles()
+            .flat_map(|(c, e)| items_of(&c, e.mark))
             .collect()
     }
 
-    fn circles(&self) -> impl Iterator<Item = MagicCircle> + '_ {
-        self.entries.iter().map(|(h, _)| MagicCircle::from_hash(*h))
-    }
-
-    pub fn items(&self) -> HashSet<Item> {
-        self.circles().flat_map(|c| items_of(&c)).collect()
+    /// 頁に並ぶ項目と隠し項目の両方
+    fn found(&self) -> HashSet<Item> {
+        let mut found = self.items();
+        found.extend(self.entries.iter().flat_map(|e| e.mark.hidden_items()));
+        found
     }
 
     /// 格ごとの、その格になった呪文の種類数
     pub fn spells_of(&self, tier: Tier) -> usize {
-        self.circles().filter(|c| c.tier == tier).count()
+        self.circles()
+            .filter(|(c, e)| e.mark == Mark::None && c.tier == tier)
+            .count()
     }
 
     pub fn skeletons(&self) -> usize {
         self.circles()
-            .map(|c| (c.shape, c.layout, c.tier))
+            .filter(|(_, e)| e.mark == Mark::None)
+            .map(|(c, _)| (c.shape, c.layout, c.tier))
             .collect::<HashSet<_>>()
             .len()
     }
@@ -170,8 +271,20 @@ impl Grimoire {
     pub fn casts(&self) -> (usize, u64) {
         (
             self.entries.len(),
-            self.entries.iter().map(|(_, n)| n).sum(),
+            self.entries.iter().map(|e| e.count).sum(),
         )
+    }
+
+    /// 禁呪の種類数と延べの回数、見つけた物語の呪文
+    fn forbidden(&self) -> (usize, u64, HashSet<Doom>) {
+        let marked = || self.entries.iter().filter(|e| e.mark != Mark::None);
+        let dooms = marked()
+            .filter_map(|e| match e.mark {
+                Mark::Doom(d) => Some(d),
+                _ => None,
+            })
+            .collect();
+        (marked().count(), marked().map(|e| e.count).sum(), dooms)
     }
 }
 
@@ -250,6 +363,38 @@ pub fn show(g: &Grimoire, l: Locale) -> String {
             format!("{}/{SKELETONS}", g.skeletons())
         ),
     });
+    // 禁呪の欄は、禁呪を 1 度でも唱えるまで出さない
+    let (spells, casts, dooms) = g.forbidden();
+    if spells > 0 {
+        s.push_str(&match l {
+            Locale::Ja => format!(
+                "\n  {} {:>6}  延べ {casts} 回\n",
+                pad("禁呪", 10),
+                format!("{spells} 種")
+            ),
+            Locale::En => format!(
+                "\n  {} {:>6}  spells, cast {casts} times\n",
+                pad("forbidden", 10),
+                spells
+            ),
+        });
+        let names: Vec<&str> = Doom::ALL
+            .iter()
+            .map(|d| {
+                if dooms.contains(d) {
+                    d.name(l)
+                } else {
+                    unknown
+                }
+            })
+            .collect();
+        s.push_str(&format!(
+            "  {} {:>6}  {}\n",
+            pad(l.pick("物語の呪文", "story"), 10),
+            format!("{}/{}", dooms.len(), Doom::ALL.len()),
+            names.join(l.pick("  ", ", "))
+        ));
+    }
     if have == total {
         s.push_str(l.pick(
             "\n✦ 図鑑が埋まりました。骨格も集めてみてください\n",
@@ -288,11 +433,11 @@ mod tests {
     fn records_and_counts() {
         let mut g = Grimoire::default();
         let c = MagicCircle::from_command("git status");
-        let new = g.record(&c);
+        let new = g.record(&c, None);
         assert!(new.contains(&Item::Tier(c.tier)));
         assert!(new.contains(&Item::Shape(c.shape)));
         // 2 回目は何も増えないが、回数は数える
-        assert!(g.record(&c).is_empty());
+        assert!(g.record(&c, None).is_empty());
         assert_eq!(g.casts(), (1, 2));
         assert_eq!(g.skeletons(), 1);
     }
@@ -300,10 +445,17 @@ mod tests {
     #[test]
     fn round_trip_keeps_no_command() {
         let mut g = Grimoire::default();
-        g.record(&MagicCircle::from_command("secret --token abc"));
-        g.record(&MagicCircle::from_command("ls"));
+        g.record(&MagicCircle::from_command("secret --token abc"), None);
+        g.record(&MagicCircle::from_command("ls"), None);
+        let mut rm = MagicCircle::from_command("rm -rf secret");
+        rm.forbid();
+        g.record(&rm, None);
+        let mut balse = MagicCircle::from_command("バルス");
+        balse.forbid();
+        g.record(&balse, Some(Doom::Balse));
         let text = g.to_text();
         assert!(!text.contains("secret") && !text.contains("abc"));
+        assert!(text.contains(" 1 forbidden\n") && text.contains(" 1 doom:balse\n"));
         assert_eq!(Grimoire::parse(&text), g);
         // 壊れた行は読み飛ばす
         let broken = format!("{text}zz 3\nnot a line\n");
@@ -316,7 +468,7 @@ mod tests {
             .map(|i| MagicCircle::from_command(&format!("cmd {i}")))
             .find(|c| c.layout == Layout::Grand)
             .unwrap();
-        assert!(!items_of(&c).contains(&Item::Ornament(c.ornament)));
+        assert!(!items_of(&c, Mark::None).contains(&Item::Ornament(c.ornament)));
     }
 
     #[test]
@@ -324,7 +476,11 @@ mod tests {
         // record を 3000 回呼ぶと毎回全体を数え直して遅いので、直接詰める
         let g = Grimoire {
             entries: (0..3000)
-                .map(|i| (MagicCircle::from_command(&format!("cmd {i}")).hash, 1))
+                .map(|i| Entry {
+                    hash: MagicCircle::from_command(&format!("cmd {i}")).hash,
+                    count: 1,
+                    mark: Mark::None,
+                })
                 .collect(),
         };
         let total: usize = pages().iter().map(|(_, _, items)| items.len()).sum();
@@ -340,6 +496,50 @@ mod tests {
         assert!(page.contains("0 / 38"));
         assert!(page.contains("???"));
         assert!(!page.contains("hexagram"));
+        // 禁呪を唱えるまで、禁呪の欄は無い
+        assert!(!page.contains("forbidden") && !page.contains("story"));
+    }
+
+    #[test]
+    fn forbidden_spells_open_a_hidden_section() {
+        let mut g = Grimoire::default();
+        let mut rm = MagicCircle::from_command("rm -rf x");
+        rm.forbid();
+        let new = g.record(&rm, None);
+        assert!(new.contains(&Item::Forbidden));
+        // 超極大魔法として描かれたので、本来の格は埋めない
+        assert!(!new.iter().any(|i| matches!(i, Item::Tier(_))));
+        let page = show(&g, Locale::Ja);
+        assert!(page.contains("禁呪") && page.contains("0/4"));
+        assert!(!page.contains("バルス"));
+
+        let mut balse = MagicCircle::from_command("バルス");
+        balse.forbid();
+        let new = g.record(&balse, Some(Doom::Balse));
+        assert_eq!(new.last(), Some(&Item::Doom(Doom::Balse)));
+        assert!(!new.contains(&Item::Forbidden));
+        let page = show(&g, Locale::Ja);
+        assert!(page.contains("1/4") && page.contains("バルス  ？？？"));
+        assert!(page.contains("2 種"));
+    }
+
+    #[test]
+    fn old_entries_get_their_mark() {
+        // 印が無かった頃の図鑑（v1）もそのまま読め、禁呪を唱え直すと印が付く
+        let c = MagicCircle::from_command("バルス");
+        let hex = c.hash_hex();
+        let mut g = Grimoire::parse(&format!("# maho grimoire v1\n{hex} 3\n"));
+        let mut balse = c.clone();
+        balse.forbid();
+        let new = g.record(&balse, Some(Doom::Balse));
+        assert!(new.contains(&Item::Doom(Doom::Balse)));
+        assert_eq!(g.casts(), (1, 4));
+        assert!(g.to_text().contains(&format!("{hex} 4 doom:balse")));
+        // 知らない印は、印の無いものとして読む
+        assert_eq!(
+            Grimoire::parse(&format!("{hex} 2 sparkly\n")).entries[0].mark,
+            Mark::None
+        );
     }
 
     #[test]

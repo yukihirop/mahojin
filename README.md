@@ -188,13 +188,15 @@ haven't met yet hidden as `???`.
 When a cast fills in something new, a line like `✦ New in the grimoire: major spell / nested polygons`
 appears under the circle. Once all 38 are in, the skeletons (shape × layout × tier, 144 in all) are the
 long game. An ornament only counts when you can see it, so a grand star layout doesn't fill one in.
+Beyond the 38, the grimoire has a section that stays hidden until you cast a certain kind of spell.
 
 There are about 65 million + α combinations in all, so you'll hardly ever meet the same circle twice.
 Collecting every skeleton takes around 15,000 different commands, so completing it is
 practically impossible; take your time. Arguments are part of the spell, so every `git commit -m "..."` casts a new one.
 
 The grimoire lives at `$XDG_DATA_HOME/maho/grimoire` (or `~/.local/share/maho/grimoire`). It keeps
-only each command's hash and how many times you cast it, never the command itself.
+only each command's hash, how many times you cast it and whether it drew the tier that isn't in the
+table, never the command itself.
 
 ## How a circle is decided
 

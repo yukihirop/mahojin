@@ -288,7 +288,7 @@ fn main() -> ExitCode {
     if grimoire::enabled(env)
         && let Some(path) = &grimoire_path
     {
-        record(path, &circle, l);
+        record(path, &circle, forbidden::doom_of(&spell), l);
     }
     if let Some(path) = &opts.svg_path {
         if let Err(e) = std::fs::write(path, render::svg(&circle, &spell)) {
@@ -376,11 +376,11 @@ fn share(c: &MagicCircle, spell: &str, l: Locale) -> ExitCode {
 
 /// 唱えた魔法陣を図鑑に書き込み、初めて見た項目があれば知らせる。
 /// 図鑑も飾りなので、書けなくても黙ってコマンドを続ける。
-fn record(path: &std::path::Path, c: &MagicCircle, l: Locale) {
+fn record(path: &std::path::Path, c: &MagicCircle, doom: Option<forbidden::Doom>, l: Locale) {
     let Ok(mut g) = grimoire::Grimoire::load(path) else {
         return;
     };
-    let new = g.record(c);
+    let new = g.record(c, doom);
     if g.save(path).is_ok() && !new.is_empty() && std::io::stderr().is_terminal() {
         eprintln!("{}", grimoire::announce(&new, l));
     }
