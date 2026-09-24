@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::time::Duration;
 
-use circle::MagicCircle;
+use circle::{MagicCircle, Tier};
 use locale::{Locale, Source};
 
 fn usage(l: Locale) -> String {
@@ -176,7 +176,8 @@ fn main() -> ExitCode {
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
     // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
     let protocol = terminal::detect(|k| std::env::var(k).ok());
-    let drawn = match terminal::play(&animation(&circle, &spell), FRAME_INTERVAL, protocol) {
+    let frames = animation(&circle, &spell);
+    let drawn = match terminal::play(&frames, FRAME_INTERVAL, protocol, circle.tier.rows()) {
         Ok(drawn) => drawn,
         Err(e) => {
             match l {
@@ -191,6 +192,9 @@ fn main() -> ExitCode {
     } else if !drawn && std::io::stderr().is_terminal() {
         // 絵を出せない端末でも、魔法が発動したことだけは伝える
         eprintln!("{}", unfolded(&spell, l));
+    } else if drawn && matches!(circle.tier, Tier::Large | Tier::Ultimate) {
+        // 出にくい格を引いたときだけ、何が出たかを名乗る
+        eprintln!("✦ {}", circle.tier.name(l));
     }
     if let Some(path) = &opts.svg_path {
         if let Err(e) = std::fs::write(path, render::svg(&circle, &spell)) {
@@ -336,6 +340,7 @@ fn unfolded(spell: &str, l: Locale) -> String {
 fn explain(spell: &str, c: &MagicCircle, l: Locale) {
     eprintln!("{}", unfolded(spell, l));
     eprintln!("  hash      {}", c.hash_hex());
+    eprintln!("  tier      {}", c.tier.name(l));
     eprintln!(
         "  layout {}  shape {}  ornament {}  rings {}  symmetry {}  runes {}  particles {}",
         c.layout.name(l),

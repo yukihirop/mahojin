@@ -18,6 +18,8 @@ $ maho git status
 - **Change one character and you get a completely different circle.** `ls` and `ls -la` look nothing alike
 - **The writing on the rings is the command itself.** The invented magic script on the bands spells out
   the command one byte at a time. The same character has the same glyph in every circle
+- **Some spells are bigger than others.** Each command is a minor, standard, major or ultimate spell,
+  and the circle grows from 8 to 36 terminal rows. The bigger, the rarer
 - **It stays out of your way.** The circle unfolds in about a second, and all of it goes to stderr.
   stdout, the exit code and pipes stay the command's own
 
@@ -57,6 +59,7 @@ Options go only before the command. In `maho cargo --explain E0308`, `--explain`
 $ maho --explain git status
 ✦ Magic circle unfolded: git status
   hash      e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6
+  tier      ultimate spell
   layout breach  shape wheel  ornament star  rings 5  symmetry 3  runes 27  particles 398
   script dotted  size 1.12  spacing 0.37  separator none  band runes
   rotation 265.3°  hue 288.8°  clockwise
@@ -73,7 +76,7 @@ is written to the current directory, and a URL that opens X's composer with the 
 Attach the image yourself.
 
 ```text
-I cast "git status" and this magic circle unfolded ✦
+I cast "git status" and an ultimate spell circle unfolded ✦
 
 breach layout / wheel / star / 3-fold symmetry
 Sigil e62b04aa
@@ -96,11 +99,23 @@ The language is chosen in this order: `--locale` > `MAHO_LOCALE` > the config fi
 (`$XDG_CONFIG_HOME/maho/config`, or `~/.config/maho/config`) > `LC_ALL` / `LC_MESSAGES` / `LANG`
 (Japanese if it starts with `ja`) > English.
 
+## Spell tiers
+
+| Tier | Height | Chance |
+| --- | --- | --- |
+| minor spell | 8 rows | 35% |
+| standard spell | 16 rows | 40% |
+| major spell | 24 rows | 18% |
+| ultimate spell | 36 rows | 7% |
+
+The tier comes from the hash too, so a command is always the same tier. Major and ultimate spells
+announce themselves with a line like `✦ ultimate spell` under the circle.
+
 ## How a circle is decided
 
 1. Take the SHA-256 of the command string (the arguments joined with spaces)
 2. Seed a random generator (ChaCha8) with it, and draw the layout, core shape, ornament, number of rings,
-   symmetry, rune count, particle count, rotation, hue, spin direction, and how the spell is written
+   symmetry, rune count, particle count, rotation, hue, spin direction, how the spell is written, and the tier
 3. The layout is one of 3 (classic / grand star / breach), the core shape one of 12 (hexagram, pentagram,
    spiral, Metatron's cube, wheel, and more), and the ornament one of 6 (star, chain, rays, crown, web, beads)
 4. The spell is written in one of 4 scripts (runic / angular / flowing / dotted), at its own glyph size and

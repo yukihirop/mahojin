@@ -149,6 +149,49 @@ impl Band {
     }
 }
 
+/// 魔法の格。端末に出す魔法陣の大きさが変わる。大きいものほど出にくい。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tier {
+    Small,
+    Medium,
+    Large,
+    Ultimate,
+}
+
+impl Tier {
+    #[cfg(test)]
+    const ALL: [Tier; 4] = [Tier::Small, Tier::Medium, Tier::Large, Tier::Ultimate];
+
+    /// 百分率で引いた値から格を決める。小 35% / 中 40% / 大 18% / 極大 7%
+    fn from_roll(roll: u32) -> Self {
+        match roll {
+            0..35 => Tier::Small,
+            35..75 => Tier::Medium,
+            75..93 => Tier::Large,
+            _ => Tier::Ultimate,
+        }
+    }
+
+    /// 端末に出すときの高さ（行数）
+    pub fn rows(self) -> u32 {
+        match self {
+            Tier::Small => 8,
+            Tier::Medium => 16,
+            Tier::Large => 24,
+            Tier::Ultimate => 36,
+        }
+    }
+
+    pub fn name(self, l: Locale) -> &'static str {
+        match self {
+            Tier::Small => l.pick("小魔法", "minor spell"),
+            Tier::Medium => l.pick("中魔法", "standard spell"),
+            Tier::Large => l.pick("大魔法", "major spell"),
+            Tier::Ultimate => l.pick("極大魔法", "ultimate spell"),
+        }
+    }
+}
+
 const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -175,6 +218,7 @@ pub struct MagicCircle {
     /// 呪文を書く筆致（書体・大きさ・字間・区切り）
     pub hand: Hand,
     pub band: Band,
+    pub tier: Tier,
 }
 
 impl MagicCircle {
@@ -205,6 +249,7 @@ impl MagicCircle {
                 separator: Separator::ALL[below(&mut rng, Separator::ALL.len() as u32) as usize],
             },
             band: Band::ALL[below(&mut rng, Band::ALL.len() as u32) as usize],
+            tier: Tier::from_roll(below(&mut rng, 100)),
         }
     }
 
@@ -275,6 +320,13 @@ mod tests {
         for sep in Separator::ALL {
             assert!(circles.iter().any(|c| c.hand.separator == sep), "{sep:?}");
         }
+        for tier in Tier::ALL {
+            assert!(circles.iter().any(|c| c.tier == tier), "{tier:?}");
+        }
+        // 大きいほど出にくい
+        let count = |t: Tier| circles.iter().filter(|c| c.tier == t).count();
+        assert!(count(Tier::Medium) > count(Tier::Large));
+        assert!(count(Tier::Large) > count(Tier::Ultimate));
         for band in Band::ALL {
             assert!(circles.iter().any(|c| c.band == band), "{band:?}");
         }

@@ -13,17 +13,23 @@ const MAX_SPELL: usize = 60;
 pub fn post(c: &MagicCircle, spell: &str, l: Locale) -> String {
     let (layout, shape, ornament) = (c.layout.name(l), c.shape.name(l), c.ornament.name(l));
     let (spell, sigil) = (shorten(spell), &c.hash_hex()[..8]);
+    let tier = c.tier.name(l);
     let body = match l {
         Locale::Ja => format!(
-            "「{spell}」を唱えたら、この魔法陣が展開した ✦\n\n\
+            "「{spell}」を唱えたら、{tier}の魔法陣が展開した ✦\n\n\
              {layout}の陣 / {shape} / {ornament} / {} 回対称\n\
              呪紋 {sigil}",
             c.symmetry
         ),
         Locale::En => format!(
-            "I cast \"{spell}\" and this magic circle unfolded ✦\n\n\
+            "I cast \"{spell}\" and {} {tier} circle unfolded ✦\n\n\
              {layout} layout / {shape} / {ornament} / {}-fold symmetry\n\
              Sigil {sigil}",
+            if tier.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                "an"
+            } else {
+                "a"
+            },
             c.symmetry
         ),
     };
@@ -69,14 +75,17 @@ mod tests {
     fn post_names_the_spell_and_circle() {
         let c = MagicCircle::from_command("git status");
         let p = post(&c, "git status", Locale::Ja);
-        assert!(p.starts_with("「git status」を唱えたら"));
+        assert!(p.starts_with(&format!(
+            "「git status」を唱えたら、{}の魔法陣が",
+            c.tier.name(Locale::Ja)
+        )));
         assert!(p.contains("突破の陣 / 車輪 / 星形 / 3 回対称"));
         assert!(p.contains("呪紋 e62b04aa"));
         assert!(p.ends_with(REPO));
         assert_eq!(image_name(&c), "maho-e62b04aa.png");
 
         let p = post(&c, "git status", Locale::En);
-        assert!(p.starts_with("I cast \"git status\" and"));
+        assert!(p.starts_with("I cast \"git status\" and an ultimate spell circle unfolded"));
         assert!(p.contains("breach layout / wheel / star / 3-fold symmetry"));
         assert!(p.contains("Sigil e62b04aa"));
     }

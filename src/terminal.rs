@@ -11,10 +11,11 @@ use std::time::{Duration, Instant};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 
-/// 画像の高さ（端末の行数）。幅は縦横比から端末が決める。
-const ROWS: u32 = 16;
-/// PNG に落とすときの一辺のピクセル数
-const PIXELS: u32 = 512;
+/// 1 行ぶんの高さに割り当てるピクセル数。16 行なら 512px になる。
+const PIXELS_PER_ROW: u32 = 32;
+/// 画像の一辺の上限。これより大きく出すときは端末に引き伸ばしてもらう。
+/// 1152px（36 行）を焼くと展開が 2 秒を超え、コマンドを待たせてしまう。
+const MAX_PIXELS: u32 = 768;
 /// Kitty に送る画像の ID。コマを差し替えるために毎回同じ値を使う。
 const IMAGE_ID: u32 = 0x6d61; // "ma"
 
@@ -52,16 +53,21 @@ pub fn detect(env: impl Fn(&str) -> Option<String>) -> Protocol {
     Protocol::None
 }
 
-/// SVG のコマを順に PNG にして、stderr の同じ場所へ描き直していく。
-/// コマが 1 枚なら静止画になる。描いたら `true`、描けなかったら理由を返す。
+/// SVG のコマを順に PNG にして、stderr の同じ場所へ高さ `rows` 行で描き直していく。
+/// 幅は縦横比から端末が決める。コマが 1 枚なら静止画になる。描いたら `true`、描けなかったら理由を返す。
 /// stderr が端末でないとき（リダイレクト中など）は何もせず `false` を返す。
-pub fn play(frames: &[String], interval: Duration, protocol: Protocol) -> Result<bool, String> {
+pub fn play(
+    frames: &[String],
+    interval: Duration,
+    protocol: Protocol,
+    rows: u32,
+) -> Result<bool, String> {
     if protocol == Protocol::None || !io::stderr().is_terminal() || frames.is_empty() {
         return Ok(false);
     }
     // 1 コマの変換に 0.1 秒ほどかかる。全コマを並列で焼きつつ、焼けた順に
     // 決まった間隔で流す。全部焼いてから流すと、その時間ぶん待たされる。
-    let pngs = rasterize_in_background(frames);
+    let pngs = rasterize_in_background(frames, (rows * PIXELS_PER_ROW).min(MAX_PIXELS));
 
     let mut err = io::stderr().lock();
     let mut out = |bytes: &[u8]| err.write_all(bytes).and_then(|_| err.flush());
@@ -69,26 +75,29 @@ pub fn play(frames: &[String], interval: Duration, protocol: Protocol) -> Result
 
     // 先に画像の高さぶん改行して場所を空け、その先頭に戻ってカーソル位置を覚える。
     // 画面の最下行で描き始めても、画像が下にはみ出さない。
-    out(format!("{}\x1b[{ROWS}A\r\x1b7", "\n".repeat(ROWS as usize)).as_bytes()).map_err(io)?;
+    out(format!("{}\x1b[{rows}A\r\x1b7", "\n".repeat(rows as usize)).as_bytes()).map_err(io)?;
     let mut next = Instant::now();
     for rx in pngs {
         let png = rx.recv().map_err(|e| e.to_string())??;
         std::thread::sleep(next.saturating_duration_since(Instant::now()));
         let seq = match protocol {
-            Protocol::Kitty => kitty(&png),
-            Protocol::Iterm => iterm(&png),
+            Protocol::Kitty => kitty(&png, rows),
+            Protocol::Iterm => iterm(&png, rows),
             Protocol::None => unreachable!(),
         };
         out(format!("\x1b8{seq}").as_bytes()).map_err(io)?;
         next = Instant::now() + interval;
     }
     // 画像の下の行へ抜ける
-    out(format!("\x1b8\x1b[{ROWS}B\r").as_bytes()).map_err(io)?;
+    out(format!("\x1b8\x1b[{rows}B\r").as_bytes()).map_err(io)?;
     Ok(true)
 }
 
 /// コマごとの受け口を返し、裏のスレッドで先頭のコマから順に焼いていく。
-fn rasterize_in_background(frames: &[String]) -> Vec<Receiver<Result<Vec<u8>, String>>> {
+fn rasterize_in_background(
+    frames: &[String],
+    pixels: u32,
+) -> Vec<Receiver<Result<Vec<u8>, String>>> {
     let (txs, rxs): (Vec<_>, Vec<_>) = frames.iter().map(|_| mpsc::channel()).unzip();
     let jobs: Arc<Mutex<_>> = Arc::new(Mutex::new(
         frames
@@ -106,7 +115,7 @@ fn rasterize_in_background(frames: &[String]) -> Vec<Receiver<Result<Vec<u8>, St
                     return;
                 };
                 // 受け手が先に抜けていたら送れないが、それで困ることはない
-                let _ = tx.send(rasterize(&svg, PIXELS));
+                let _ = tx.send(rasterize(&svg, pixels));
             }
         });
     }
@@ -130,7 +139,7 @@ pub fn rasterize(svg: &str, pixels: u32) -> Result<Vec<u8>, String> {
 /// Kitty graphics protocol。ペイロードは 4096 バイトずつに分けて送る決まり。
 /// `q=2` で端末からの応答を止める。止めないと応答が子プロセスの stdin に混ざる。
 /// 毎コマ同じ画像 ID で送ると前のコマが消えて差し替わる。`C=1` でカーソルを動かさない。
-fn kitty(png: &[u8]) -> String {
+fn kitty(png: &[u8], rows: u32) -> String {
     let data = B64.encode(png);
     let chunks: Vec<&str> = data
         .as_bytes()
@@ -142,7 +151,7 @@ fn kitty(png: &[u8]) -> String {
         let more = (i + 1 < chunks.len()) as u8;
         if i == 0 {
             out.push_str(&format!(
-                "\x1b_Gf=100,a=T,i={IMAGE_ID},p=1,C=1,q=2,r={ROWS},m={more};{chunk}\x1b\\"
+                "\x1b_Gf=100,a=T,i={IMAGE_ID},p=1,C=1,q=2,r={rows},m={more};{chunk}\x1b\\"
             ));
         } else {
             out.push_str(&format!("\x1b_Gm={more};{chunk}\x1b\\"));
@@ -152,9 +161,9 @@ fn kitty(png: &[u8]) -> String {
 }
 
 /// iTerm2 inline images protocol
-fn iterm(png: &[u8]) -> String {
+fn iterm(png: &[u8], rows: u32) -> String {
     format!(
-        "\x1b]1337;File=inline=1;size={};height={ROWS};preserveAspectRatio=1:{}\x07",
+        "\x1b]1337;File=inline=1;size={};height={rows};preserveAspectRatio=1:{}\x07",
         png.len(),
         B64.encode(png)
     )
@@ -207,11 +216,11 @@ mod tests {
 
     #[test]
     fn kitty_chunks_are_well_formed() {
-        let seq = kitty(&vec![0u8; 10_000]);
+        let seq = kitty(&vec![0u8; 10_000], 16);
         let parts: Vec<&str> = seq.split("\x1b\\").filter(|p| !p.is_empty()).collect();
         assert!(parts.len() > 1);
         assert!(parts[0].starts_with("\x1b_Gf=100,a=T,"));
-        assert!(parts[0].contains(",C=1,q=2,"));
+        assert!(parts[0].contains(",C=1,q=2,r=16,"));
         assert!(parts[0].contains("m=1;"));
         assert!(parts.last().unwrap().starts_with("\x1b_Gm=0;"));
     }
@@ -222,7 +231,7 @@ mod tests {
             &crate::circle::MagicCircle::from_command("git status"),
             "git status",
         );
-        let png = rasterize(&svg, PIXELS).unwrap();
+        let png = rasterize(&svg, 512).unwrap();
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
     }
 }

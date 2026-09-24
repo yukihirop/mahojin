@@ -7,7 +7,7 @@ ImageMagick で描き足す。実際のコマンドは走らせず、何もし�
 
 必要なもの: cargo, ImageMagick (magick), script(1)
 使い方:     python3 scripts/demo.py   # assets/demo.gif と assets/gallery.jpg を書き出す
-フォント:   既定は macOS の Monaco。MAHO_DEMO_FONT で差し替えられる。
+フォント:   既定は macOS の Menlo（✦ の字を持っている）。MAHO_DEMO_FONT で差し替えられる。
 """
 
 import base64
@@ -22,55 +22,66 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
 MAHO = ROOT / "target" / "release" / "maho"
-FONT = os.environ.get("MAHO_DEMO_FONT", "/System/Library/Fonts/Monaco.ttf")
+FONT = os.environ.get("MAHO_DEMO_FONT", "/System/Library/Fonts/Menlo.ttc")
 
-# デモで打つコマンドと、その後に出す（それらしい）出力
+# デモで打つコマンドと、その後に出す（それらしい）出力。
+# 魔法の格が 小 → 中 → 大 → 極大 と上がっていく順に並べる
 DEMOS = [
-    ("git status", [
-        "On branch main",
-        "Your branch is up to date with 'origin/main'.",
-        "",
-        "nothing to commit, working tree clean",
-    ]),
-    ("cargo build --release", [
-        "   Compiling maho v0.1.0 (~/maho)",
-        "    Finished `release` profile [optimized] target(s) in 4.21s",
-    ]),
     ("npm test", [
         "> app@1.0.0 test",
         "> vitest run",
         "",
         " Test Files  3 passed (3)",
     ]),
+    ("ls -la", [
+        "drwxr-xr-x  8 you  staff   256 Sep 24 11:02 .",
+        "-rw-r--r--  1 you  staff  2195 Sep 24 11:02 Cargo.toml",
+        "drwxr-xr-x  6 you  staff   192 Sep 24 11:02 src",
+    ]),
+    ("cargo build --release", [
+        "   Compiling maho v0.1.0 (~/maho)",
+        "    Finished `release` profile [optimized] target(s) in 4.21s",
+    ]),
+    ("git status", [
+        "On branch main",
+        "nothing to commit, working tree clean",
+    ]),
 ]
 
-# ギャラリーに並べるコマンド。1 文字違いのものを隣に置く
+# ギャラリーに並べるコマンド。似たものを隣に置き、4 つの格がそろうようにする
 GALLERY = [
-    "git status", "git commit", "git commit -m 'fix'", "git push",
+    "git status", "git commit", "make", "git push",
     "ls", "ls -la", "cargo build", "docker compose up",
 ]
 
-W, H = 720, 720
-CIRCLE = 512
-CIRCLE_X, CIRCLE_Y = (W - CIRCLE) // 2, 76
+W, H = 720, 820
+# 端末の 1 行ぶんを何ピクセルで描くか。36 行の極大魔法で 576px になる
+ROW_PX = 16
+CIRCLE_Y = 76
 LINE_H = 24
 BG, BAR = "#11111b", "#1e1e2e"
 
 
-def capture(spell: str, stub_dir: Path, work: Path) -> list[Path]:
-    """maho に spell を唱えさせ、端末へ送られたコマを PNG にして返す。
+def capture(spell: str, stub_dir: Path, work: Path) -> tuple[list[Path], int, str]:
+    """maho に spell を唱えさせ、端末へ送られたコマの PNG と、画像の高さ（行数）と、
+    画像の下に出た 1 行（大魔法以上で出る名乗り）を返す。
     spell は引用符付きの引数（-m 'fix'）もシェルと同じように割って渡す。"""
     out = work / "tty.out"
     env = {
         "PATH": f"{stub_dir}:/usr/bin:/bin",
         "TERM_PROGRAM": "ghostty",
         "HOME": os.environ.get("HOME", "/tmp"),
+        # 名乗りは英語で出させる（デモのフォントに日本語が無いことがある）
+        "MAHO_LOCALE": "en",
     }
     subprocess.run(
         ["script", "-q", str(out), str(MAHO), *shlex.split(spell)],
         env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=True,
     )
     data = out.read_bytes()
+    rows = int(re.search(rb"\x1b_G[^;]*,r=(\d+),", data).group(1))
+    # 最後の画像の後、カーソルを画像の下へ動かした先に出た文字
+    after = re.split(rb"\x1b\[\d+B\r", data)[-1].decode().strip()
     frames, chunk = [], b""
     for ctrl, payload in re.findall(rb"\x1b_G([^;]*);([^\x1b]*)\x1b\\", data):
         chunk += payload
@@ -84,15 +95,15 @@ def capture(spell: str, stub_dir: Path, work: Path) -> list[Path]:
         paths.append(p)
     if not paths:
         sys.exit(f"maho から画像を受け取れませんでした: {spell}")
-    return paths
+    return paths, rows, after
 
 
 def slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
 
-def terminal_frame(dest: Path, typed: str, circle: Path | None, output: list[str]):
-    """ターミナル 1 コマを描く。"""
+def terminal_frame(dest: Path, typed: str, circle: Path | None, rows: int, output: list[str]):
+    """ターミナル 1 コマを描く。魔法陣は端末と同じく rows 行ぶんの高さで貼る。"""
     cmd = [
         "magick", "-size", f"{W}x{H}", f"xc:{BG}",
         "-fill", BAR, "-draw", f"rectangle 0,0 {W},32",
@@ -105,9 +116,11 @@ def terminal_frame(dest: Path, typed: str, circle: Path | None, output: list[str
         "-fill", "#a6e3a1", "-annotate", "+20+60", "$",
         "-fill", "#cdd6f4", "-annotate", "+40+60", typed,
     ]
+    size = rows * ROW_PX
     if circle is not None:
-        cmd += [str(circle), "-geometry", f"+{CIRCLE_X}+{CIRCLE_Y}", "-composite"]
-    y = CIRCLE_Y + CIRCLE + 28
+        cmd += ["(", str(circle), "-resize", f"{size}x{size}", ")",
+                "-geometry", f"+{(W - size) // 2}+{CIRCLE_Y}", "-composite"]
+    y = CIRCLE_Y + size + 28
     for line in output:
         if line:
             cmd += ["-pointsize", "15", "-fill", "#cdd6f4", "-annotate", f"+20+{y}", line]
@@ -120,24 +133,25 @@ def build_demo(stub_dir: Path, work: Path):
     frames: list[tuple[Path, int]] = []  # (画像, 1/100 秒単位の表示時間)
     n = 0
 
-    def add(typed, circle, output, delay):
+    def add(typed, circle, output, delay, rows=0):
         nonlocal n
         p = work / f"demo-{n:04d}.png"
-        terminal_frame(p, typed, circle, output)
+        terminal_frame(p, typed, circle, rows, output)
         frames.append((p, delay))
         n += 1
 
     for spell, output in DEMOS:
-        circles = capture(spell, stub_dir, work)
+        circles, rows, tier = capture(spell, stub_dir, work)
         line = f"maho {spell}"
         for k in range(0, len(line) + 1, 2):
             add(line[:k], None, [], 5)
         add(line, None, [], 35)
         # maho と同じく 16 コマをおよそ 45ms 間隔で
         for c in circles:
-            add(line, c, [], 5)
-        add(line, circles[-1], [], 20)
-        add(line, circles[-1], output, 230)
+            add(line, c, [], 5, rows)
+        head = [tier] if tier else []
+        add(line, circles[-1], head, 20, rows)
+        add(line, circles[-1], head + output, 230, rows)
 
     args = ["magick", "-loop", "0"]
     for p, delay in frames:
@@ -147,14 +161,21 @@ def build_demo(stub_dir: Path, work: Path):
 
 
 def build_gallery(stub_dir: Path, work: Path):
+    """--share が書き出す大きな画像を並べる。--share はコマンドを実行しない。"""
     tiles = []
     for spell in GALLERY:
-        last = capture(spell, stub_dir, work)[-1]
-        tiles += ["-label", spell, str(last)]
+        res = subprocess.run(
+            [str(MAHO), "--share", *shlex.split(spell)],
+            cwd=work, env={"PATH": "/usr/bin:/bin", "MAHO_LOCALE": "en", "HOME": "/tmp"},
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True,
+        )
+        image = re.search(r"image\s+(\S+)", res.stderr).group(1)
+        tier = re.search(r" an? (.+?) circle unfolded", res.stdout).group(1)
+        tiles += ["-label", f"{spell}\n{tier}", str(work / image)]
     subprocess.run([
         "magick", "montage", *tiles,
         "-tile", "4x2", "-geometry", "320x320+8+8",
-        "-font", FONT, "-pointsize", "18",
+        "-font", FONT, "-pointsize", "17",
         "-fill", "#cdd6f4", "-background", BG, "-quality", "85",
         str(ASSETS / "gallery.jpg"),
     ], check=True)
