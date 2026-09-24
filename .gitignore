@@ -2,3 +2,5 @@
 # mahojin --share が書き出す画像と、--svg の書き出し先によく使う名前
 mahojin-*.png
 circle.svg
+# 手元のメモ（アイデアなど）。リポジトリには入れない
+/tmp
