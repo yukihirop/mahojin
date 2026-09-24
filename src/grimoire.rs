@@ -3,7 +3,7 @@
 //! 置き場所は `$XDG_DATA_HOME/mahojin/grimoire`（無ければ `~/.local/share/mahojin/grimoire`）。
 //! コマンドは書かず、ハッシュと唱えた回数だけを 1 行ずつ残す。
 //! パラメータはハッシュから引き直せるので、それで足りる（[`MagicCircle::from_hash`]）。
-//! 禁呪かどうかだけはハッシュから分からないので、3 つめの欄に印を書く（`forbidden` か `doom:balse` など）。
+//! 禁呪や神聖魔法かどうかはハッシュから分からないので、3 つめの欄に印を書く（`forbidden`、`doom:balse`、`holy`）。
 //! 暦の兆しは呪文ではなく日時のものなので、出会ったものを `omen full-moon` のように別の行に残す。
 
 use std::collections::{BTreeSet, HashSet};
@@ -32,6 +32,8 @@ pub enum Item {
     Doom(Doom),
     /// 暦の兆しがある日時に唱えて初めて現れる
     Omen(Omen),
+    /// 神聖魔法を唱えて初めて現れる
+    Holy,
 }
 
 impl Item {
@@ -62,6 +64,7 @@ impl Item {
                 Locale::Ja => format!("暦「{}」", o.name(l)),
                 Locale::En => format!("omen \"{}\"", o.name(l)),
             },
+            Item::Holy => l.pick("神聖魔法", "holy spells").into(),
         }
     }
 }
@@ -83,17 +86,19 @@ pub fn pages() -> Vec<(&'static str, &'static str, Vec<Item>)> {
     ]
 }
 
-/// 禁呪の印。唱えた言葉から決まるので、ハッシュとは別に覚える
+/// 禁呪と神聖魔法の印。唱えた言葉から決まるので、ハッシュとは別に覚える
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Mark {
     None,
     Forbidden,
     Doom(Doom),
+    Holy,
 }
 
 impl Mark {
     pub fn of(c: &MagicCircle, doom: Option<Doom>) -> Self {
         match doom {
+            _ if c.holy => Mark::Holy,
             Some(d) => Mark::Doom(d),
             None if c.forbidden => Mark::Forbidden,
             None => Mark::None,
@@ -105,6 +110,7 @@ impl Mark {
             Mark::None => None,
             Mark::Forbidden => Some("forbidden".into()),
             Mark::Doom(d) => Some(format!("doom:{}", d.key())),
+            Mark::Holy => Some("holy".into()),
         }
     }
 
@@ -113,6 +119,7 @@ impl Mark {
         match key.strip_prefix("doom:") {
             Some(d) => Doom::from_key(d).map_or(Mark::Forbidden, Mark::Doom),
             None if key == "forbidden" => Mark::Forbidden,
+            None if key == "holy" => Mark::Holy,
             None => Mark::None,
         }
     }
@@ -122,12 +129,13 @@ impl Mark {
             Mark::None => vec![],
             Mark::Forbidden => vec![Item::Forbidden],
             Mark::Doom(d) => vec![Item::Forbidden, Item::Doom(d)],
+            Mark::Holy => vec![Item::Holy],
         }
     }
 }
 
 /// その魔法陣を見て埋まる項目。
-/// 禁呪は引いた格にかかわらず超極大魔法として描かれるので、本来の格は見たことにしない。
+/// 禁呪と神聖魔法は引いた格にかかわらず超極大魔法として描かれるので、本来の格は見たことにしない。
 fn items_of(c: &MagicCircle, mark: Mark) -> Vec<Item> {
     let mut items = vec![
         Item::Shape(c.shape),
@@ -302,9 +310,22 @@ impl Grimoire {
         )
     }
 
+    /// 神聖魔法を唱えた延べの回数
+    fn holy(&self) -> u64 {
+        self.entries
+            .iter()
+            .filter(|e| e.mark == Mark::Holy)
+            .map(|e| e.count)
+            .sum()
+    }
+
     /// 禁呪の種類数と延べの回数、見つけた物語の呪文
     fn forbidden(&self) -> (usize, u64, HashSet<Doom>) {
-        let marked = || self.entries.iter().filter(|e| e.mark != Mark::None);
+        let marked = || {
+            self.entries
+                .iter()
+                .filter(|e| !matches!(e.mark, Mark::None | Mark::Holy))
+        };
         let dooms = marked()
             .filter_map(|e| match e.mark {
                 Mark::Doom(d) => Some(d),
@@ -446,6 +467,23 @@ pub fn show(g: &Grimoire, l: Locale) -> String {
             format!("{}/{}", g.omens.len(), Omen::ALL.len()),
             names.join(l.pick("  ", ", "))
         ));
+    }
+    // 神聖魔法の欄も、唱えるまで出さない
+    let holy = g.holy();
+    if holy > 0 {
+        s.push_str(&match l {
+            Locale::Ja => format!(
+                "\n  {} {:>6}  延べ {holy} 回。ありがとう\n",
+                pad("神聖魔法", 10),
+                "✦"
+            ),
+            Locale::En => format!(
+                "\n  {} {:>6}  cast {}. Thank you\n",
+                pad("holy", 10),
+                "✦",
+                plural(holy, "time")
+            ),
+        });
     }
     if have == total {
         s.push_str(l.pick(
@@ -604,6 +642,27 @@ mod tests {
         // 兆しは別の行に残り、読み直しても消えない
         let text = g.to_text();
         assert!(text.ends_with("omen full-moon\n"));
+        assert_eq!(Grimoire::parse(&text), g);
+    }
+
+    #[test]
+    fn holy_spells_open_their_own_section() {
+        let mut g = Grimoire::default();
+        let mut c = MagicCircle::from_command("gh api -X PUT /user/starred/yukihirop/mahojin");
+        c.sanctify();
+        let new = g.record(&c, None);
+        assert!(new.contains(&Item::Holy));
+        assert!(!new.iter().any(|i| matches!(i, Item::Tier(_))));
+        g.record(&c, None);
+        let page = show(&g, Locale::Ja);
+        assert!(
+            page.contains("神聖魔法") && page.contains("延べ 2 回"),
+            "{page}"
+        );
+        // 禁呪の欄には数えない
+        assert!(!page.contains("禁呪"));
+        let text = g.to_text();
+        assert!(text.contains(" 2 holy\n"));
         assert_eq!(Grimoire::parse(&text), g);
     }
 

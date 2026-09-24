@@ -2,6 +2,7 @@ mod circle;
 mod config;
 mod forbidden;
 mod grimoire;
+mod holy;
 mod locale;
 mod omen;
 mod render;
@@ -82,7 +83,8 @@ struct Options {
     no_run: bool,
     /// 詠唱モードのフックから呼ばれた。`--no-run` に加えて、除外リストのコマンドを飛ばす
     chant: bool,
-    /// 詠唱モードのフックから、失敗したコマンドの終了コードを添えて呼ばれた。砕ける魔法陣だけを出す
+    /// 詠唱モードのフックから、唱え終えたコマンドの終了コードを添えて呼ばれた。
+    /// 失敗なら砕ける魔法陣を、神聖魔法が通ったならお礼だけを出す
     shatter: Option<i32>,
     setup: bool,
     grimoire: bool,
@@ -269,8 +271,10 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut circle = MagicCircle::from_command(&spell);
-    // 禁呪は暦より強い。深紅のまま
-    if forbidden::is_forbidden(&spell) {
+    // 神聖魔法は禁呪より、禁呪は暦より強い
+    if holy::is_holy(&spell) {
+        circle.sanctify();
+    } else if forbidden::is_forbidden(&spell) {
         circle.forbid();
     } else if let Some(omen) = omen::Moment::now(env).and_then(omen::at) {
         circle.bless(omen);
@@ -278,6 +282,8 @@ fn main() -> ExitCode {
     if let Some(code) = opts.shatter {
         if shatters(code, &config) {
             break_circle(&circle, &spell, code, l);
+        } else if code == 0 && circle.holy {
+            thank(l);
         }
         return ExitCode::SUCCESS;
     }
@@ -345,6 +351,8 @@ fn main() -> ExitCode {
                 && shatters(code, &config)
             {
                 break_circle(&circle, &spell, code, l);
+            } else if status.success() && circle.holy {
+                thank(l);
             }
             exit_code(status)
         }
@@ -397,6 +405,19 @@ fn break_circle(c: &MagicCircle, spell: &str, code: i32, l: Locale) {
             Locale::Ja => eprintln!("✦ 魔法陣が砕けた（終了コード {code}）"),
             Locale::En => eprintln!("✦ The circle shattered (exit {code})"),
         }
+    }
+}
+
+/// 神聖魔法が通った（star が付いた）ときのお礼。
+fn thank(l: Locale) {
+    if std::io::stderr().is_terminal() {
+        eprintln!(
+            "{}",
+            l.pick(
+                "✦ Thank you! star、確かに受け取りました。あなたの呪文に祝福を",
+                "✦ Thank you! Your star has arrived. May your spells be blessed",
+            )
+        );
     }
 }
 
@@ -557,7 +578,7 @@ fn setup(
 
 /// 描いた魔法陣の下で名乗る言葉。出にくい格か禁呪を引いたときと、暦の兆しがあるときだけ。
 fn announced(c: &MagicCircle, l: Locale) -> Option<String> {
-    let rare = c.forbidden || matches!(c.tier, Tier::Large | Tier::Ultimate);
+    let rare = c.forbidden || c.holy || matches!(c.tier, Tier::Large | Tier::Ultimate);
     let names: Vec<&str> = rare
         .then(|| c.title(l))
         .into_iter()
@@ -567,7 +588,9 @@ fn announced(c: &MagicCircle, l: Locale) -> Option<String> {
 }
 
 fn unfolded(spell: &str, c: &MagicCircle, l: Locale) -> String {
-    let what = if c.forbidden {
+    let what = if c.holy {
+        l.pick("神聖魔法展開", "Holy circle unfolded")
+    } else if c.forbidden {
         l.pick(
             "禁呪展開（超極大魔法）",
             "Forbidden circle unfolded (super ultimate)",

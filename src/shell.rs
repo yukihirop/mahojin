@@ -99,11 +99,12 @@ _mahojin_preexec() {
   command mahojin --chant -- "$1"
 }
 
-# 唱えた呪文が失敗したら、魔法陣が砕ける
+# 唱えた呪文が失敗したら、魔法陣が砕ける。star を付ける呪文だけは、通ったときも呼ぶ
 _mahojin_precmd() {
   local st=$? line=$_mahojin_last
   _mahojin_last=
-  [[ -n $line && $st -ne 0 && -n $_MAHOJIN_CHANTING ]] && command mahojin --shatter $st -- "$line"
+  [[ -n $line && -n $_MAHOJIN_CHANTING ]] || return $st
+  [[ $st -ne 0 || $line == *starred/yukihirop/mahojin* ]] && command mahojin --shatter $st -- "$line"
   return $st
 }
 
@@ -144,11 +145,12 @@ _mahojin_cast() {
   command mahojin --chant -- "$1"
 }
 
-# 唱えた呪文が失敗したら、魔法陣が砕ける。$1 は呪文の終了コード
+# 唱えた呪文が失敗したら、魔法陣が砕ける。star を付ける呪文だけは、通ったときも呼ぶ。$1 は呪文の終了コード
 _mahojin_after() {
   local line=$_mahojin_last
   _mahojin_last=
-  [[ -n $line && $1 -ne 0 && -n $_MAHOJIN_CHANTING ]] && command mahojin --shatter "$1" -- "$line"
+  [[ -n $line && -n $_MAHOJIN_CHANTING ]] || return 0
+  [[ $1 -ne 0 || $line == *starred/yukihirop/mahojin* ]] && command mahojin --shatter "$1" -- "$line"
   return 0
 }
 
@@ -219,13 +221,14 @@ function _mahojin_preexec --on-event fish_preexec
     command mahojin --chant -- $argv[1]
 end
 
-# 唱えた呪文が失敗したら、魔法陣が砕ける
+# 唱えた呪文が失敗したら、魔法陣が砕ける。star を付ける呪文だけは、通ったときも呼ぶ
 function _mahojin_postexec --on-event fish_postexec
     set -l st $status
     set -q _mahojin_last; or return 0
     set -l line $_mahojin_last
     set -e _mahojin_last
-    if test $st -ne 0; and set -q _mahojin_chanting
+    set -q _mahojin_chanting; or return 0
+    if test $st -ne 0; or string match -q -- '*starred/yukihirop/mahojin*' $line
         command mahojin --shatter $st -- $line
     end
 end

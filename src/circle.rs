@@ -199,6 +199,8 @@ pub const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
 
 /// 禁呪の色相（深紅）
 pub const FORBIDDEN_HUE: f32 = 355.0;
+/// 神聖魔法の色相（金）
+pub const HOLY_HUE: f32 = 46.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MagicCircle {
@@ -227,6 +229,8 @@ pub struct MagicCircle {
     pub tier: Tier,
     /// 禁呪。ハッシュではなくコマンドの中身で決まるので、`from_hash` では常に false
     pub forbidden: bool,
+    /// 神聖魔法。禁呪と同じく、`from_hash` では常に false
+    pub holy: bool,
     /// 暦の兆し。唱えた日時で決まるので、`from_hash` では常に `None`
     pub omen: Option<Omen>,
 }
@@ -265,6 +269,7 @@ impl MagicCircle {
             band: Band::ALL[below(&mut rng, Band::ALL.len() as u32) as usize],
             tier: Tier::from_roll(below(&mut rng, 100)),
             forbidden: false,
+            holy: false,
             omen: None,
         }
     }
@@ -274,6 +279,13 @@ impl MagicCircle {
         self.forbidden = true;
         self.hue = FORBIDDEN_HUE;
         self.clockwise = false;
+    }
+
+    /// 神聖魔法にする。形はハッシュのまま、金と白に染めて右に回し、禁呪よりも大きな超極大魔法として描く。
+    pub fn sanctify(&mut self) {
+        self.holy = true;
+        self.hue = HOLY_HUE;
+        self.clockwise = true;
     }
 
     /// 暦の色に染める。形はハッシュのまま。13 日の金曜日だけは逆さに回す。
@@ -287,16 +299,24 @@ impl MagicCircle {
 
     /// 格の名前。禁呪は引いた格にかかわらず超極大魔法になり、禁呪であることも名乗る。
     pub fn title(&self, l: Locale) -> &'static str {
-        if self.forbidden {
+        if self.holy {
+            l.pick("神聖魔法", "holy spell")
+        } else if self.forbidden {
             l.pick("超極大魔法（禁呪）", "super ultimate spell (forbidden)")
         } else {
             self.tier.name(l)
         }
     }
 
-    /// 端末に出すときの高さ（行数）。超極大魔法は極大魔法より一回り大きい
+    /// 端末に出すときの高さ（行数）。超極大魔法は極大魔法より一回り大きく、神聖魔法はさらに大きい
     pub fn rows(&self) -> u32 {
-        if self.forbidden { 44 } else { self.tier.rows() }
+        if self.holy {
+            48
+        } else if self.forbidden {
+            44
+        } else {
+            self.tier.rows()
+        }
     }
 
     pub fn hash_hex(&self) -> String {
@@ -337,6 +357,17 @@ mod tests {
         // 13 日の金曜日だけは逆さに回る
         blessed.bless(Omen::Friday13);
         assert!(!blessed.clockwise);
+    }
+
+    #[test]
+    fn holy_spells_keep_the_shape() {
+        let plain = MagicCircle::from_command("gh api -X PUT /user/starred/yukihirop/mahojin");
+        let mut holy = plain.clone();
+        holy.sanctify();
+        assert_eq!((holy.hue, holy.clockwise), (HOLY_HUE, true));
+        assert_eq!((holy.shape, holy.layout), (plain.shape, plain.layout));
+        assert!(holy.rows() > Tier::Ultimate.rows());
+        assert_eq!(holy.title(Locale::Ja), "神聖魔法");
     }
 
     #[test]

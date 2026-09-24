@@ -10,7 +10,9 @@ use std::fmt::Write;
 use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 
-use crate::circle::{Band, FORBIDDEN_HUE, Layout, MagicCircle, Ornament, Shape, Tier, unit};
+use crate::circle::{
+    Band, FORBIDDEN_HUE, HOLY_HUE, Layout, MagicCircle, Ornament, Shape, Tier, unit,
+};
 use crate::omen::Palette;
 use crate::script;
 
@@ -84,7 +86,15 @@ impl Stages {
 
 /// 魔法陣の色。ふつうは色相から決め、粒子は補色で光る。禁呪の粒子は火の粉になる。
 /// 暦の兆しがあればその色にする。主の色相だけは魔法陣のものを使い、重ねた魔法陣を見分けられるようにする。
+/// 神聖魔法は金の線に白い光を添え、粒子も白く光る。
 fn palette(c: &MagicCircle) -> Palette {
+    if c.holy {
+        return Palette {
+            main: (c.hue, 90.0, 66.0),
+            sub: (50.0, 40.0, 92.0),
+            particle: (50.0, 100.0, 94.0),
+        };
+    }
     if let Some(omen) = c.omen {
         let mut p = omen.palette();
         p.main.0 = c.hue;
@@ -156,8 +166,8 @@ fn scene(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>) {
     };
     particles(s, &mut rng, particles_count, palette(c).particle);
     let reach = match c.tier {
-        // 禁呪は、引いた格にかかわらず超極大魔法になる
-        _ if c.forbidden => {
+        // 禁呪と神聖魔法は、引いた格にかかわらず超極大魔法になる
+        _ if c.forbidden || c.holy => {
             beyond(s, c, spell, t, &mut rng);
             BAND_OUTER
         }
@@ -460,7 +470,7 @@ const BEYOND_CENTER: f32 = 0.66;
 const BEYOND_ORBIT: f32 = 0.15;
 const BEYOND_ORBIT_R: f32 = 430.0;
 
-/// 超極大魔法（禁呪）。極大魔法をまるごと縮めて中に据え、さらに外枠を敷いて、
+/// 超極大魔法（禁呪と神聖魔法）。極大魔法をまるごと縮めて中に据え、さらに外枠を敷いて、
 /// その帯の上へ極大魔法の倍の数の小さな魔法陣を並べる。外から順に時間差で展開する。
 fn beyond(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut ChaCha8Rng) {
     let local = |delay: f32| delayed(t, delay);
@@ -512,6 +522,12 @@ fn companion(c: &MagicCircle, spell: &str, index: u8, hue_shift: f32) -> MagicCi
     if c.forbidden {
         d.forbid();
         d.hue = (FORBIDDEN_HUE + hue_shift / 12.0) % 360.0;
+    }
+    // 神聖魔法も、重ねた魔法陣まで金に染める
+    if c.holy {
+        d.sanctify();
+        // 金は黄緑に寄りやすいので、ずらし幅は禁呪より狭くする
+        d.hue = (HOLY_HUE - hue_shift / 30.0) % 360.0;
     }
     // 暦の色も重ねた魔法陣まで染める。ずらし方は禁呪と同じく小さく
     if let Some(omen) = c.omen {
@@ -1167,6 +1183,24 @@ mod tests {
             placements(&svg(&small, "ls")),
             1 + (1 + orbit_count(&small) as usize) + 2 * orbit_count(&small) as usize
         );
+    }
+
+    #[test]
+    fn holy_spells_shine_in_gold() {
+        let placements = |svg: &str| svg.matches(r#"<g transform="translate("#).count();
+        let spell = "gh api -X PUT /user/starred/yukihirop/mahojin";
+        let mut c = MagicCircle::from_command(spell);
+        c.sanctify();
+        let out = svg(&c, spell);
+        // 禁呪と同じく、極大魔法を抱えた超極大魔法として描く
+        let n = orbit_count(&c) as usize;
+        assert_eq!(placements(&out), 1 + (1 + n) + 2 * n);
+        // 重ねた魔法陣まで金と白で、ふつうの色は混ざらない
+        assert!(out.contains(&format!("hsl({HOLY_HUE:.0},90%,66%)")));
+        assert!(out.contains("hsl(50,40%,92%)") && out.contains("hsl(50,100%,94%)"));
+        assert!(!out.contains(",85%,65%)"));
+        // 禁呪の赤は混ざらない
+        assert!(!out.contains(&format!("hsl({FORBIDDEN_HUE:.0},")));
     }
 
     /// 帯が `band` の魔法陣になるコマンド
