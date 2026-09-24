@@ -32,6 +32,9 @@ fn command(segment: &str) -> bool {
                 || matches!(*w, "sudo" | "doas" | "command" | "exec" | "nohup" | "time")
         })
         .collect();
+    if doom(&words) {
+        return true;
+    }
     let Some((name, args)) = words.split_first() else {
         return false;
     };
@@ -46,6 +49,32 @@ fn command(segment: &str) -> bool {
         "kubectl" => args.contains(&"delete"),
         n => n == "mkfs" || n.starts_with("mkfs."),
     }
+}
+
+/// 物語の中の滅びの呪文。コマンドとしては存在しないが、それだけを唱えれば禁呪になる。
+/// 英語は語の間を空白 1 つで、日本語は詰めて書く（`アバダ ケダブラ` のように空けて唱えても当たる）。
+const DOOM: [&str; 10] = [
+    // 天空の城を崩した言葉。英語版では Balse
+    "バルス",
+    "ばるす",
+    "balse",
+    "barusu",
+    // 許されざる呪文
+    "avada kedavra",
+    "アバダケダブラ",
+    // ジェダイを滅ぼす命令
+    "execute order 66",
+    "オーダー66",
+    // 唱え損ねると死者がよみがえる言葉
+    "klaatu barada nikto",
+    "クラトゥバラダニクト",
+];
+
+fn doom(words: &[&str]) -> bool {
+    let spoken = words.join(" ").to_lowercase();
+    let spoken = spoken.trim_end_matches(['!', '！']);
+    let packed: String = spoken.split_whitespace().collect();
+    DOOM.contains(&spoken) || DOOM.contains(&packed.as_str())
 }
 
 fn git(args: &[&str]) -> bool {
@@ -108,6 +137,18 @@ mod tests {
             "psql -c 'DROP TABLE users'",
             ":(){ :|:& };:",
             "FOO=1 rm -rf x",
+            "バルス",
+            "バルス！",
+            "ばるす",
+            "Balse!",
+            "barusu",
+            "Avada Kedavra!",
+            "avada kedavra",
+            "アバダ ケダブラ",
+            "Execute Order 66",
+            "オーダー 66",
+            "Klaatu Barada Nikto!",
+            "クラトゥ バラダ ニクト",
         ] {
             assert!(is_forbidden(line), "{line}");
         }
@@ -132,6 +173,12 @@ mod tests {
             "kubectl get pods",
             "terraform plan",
             "ls -rf",
+            "echo バルス",
+            "balsamic",
+            "avada",
+            "avada kedavra now",
+            "execute order 65",
+            "klaatu barada",
             "",
         ] {
             assert!(!is_forbidden(line), "{line}");
