@@ -1,5 +1,6 @@
 mod circle;
 mod render;
+mod terminal;
 
 use std::process::{Command, ExitCode};
 
@@ -26,10 +27,16 @@ fn main() -> ExitCode {
     // 魔法陣を決めるのは、ユーザーが打ったコマンド文字列そのもの。
     let spell = args.join(" ");
     let circle = MagicCircle::from_command(&spell);
+    let svg = render::svg(&circle);
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
+    // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
+    let protocol = terminal::detect(|k| std::env::var(k).ok());
+    if let Err(e) = terminal::show(&svg, protocol) {
+        eprintln!("maho: 魔法陣を描けません: {e}");
+    }
     announce(&spell, &circle);
     if let Some(path) = &svg_path {
-        if let Err(e) = std::fs::write(path, render::svg(&circle)) {
+        if let Err(e) = std::fs::write(path, &svg) {
             eprintln!("maho: 魔法陣を書き出せません: {path}: {e}");
             return ExitCode::from(1);
         }
