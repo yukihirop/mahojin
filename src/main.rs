@@ -9,6 +9,7 @@ mod render;
 mod script;
 mod share;
 mod shell;
+mod skill;
 mod summon;
 mod terminal;
 
@@ -57,6 +58,11 @@ fn usage(l: Locale) -> String {
             "図鑑を開く。これまでに集めた魔法陣の種類を見る",
             "Open the grimoire: see which kinds of circles you've collected",
         ),
+        (
+            "--skills",
+            "/mahojin-setup と /mahojin-teardown のスキルを ~/.agents/skills に置く",
+            "Install the /mahojin-setup and /mahojin-teardown skills to ~/.agents/skills",
+        ),
         ("--help, -h", "この説明を表示する", "Show this help"),
         ("--version, -V", "版を表示する", "Show the version"),
     ];
@@ -65,6 +71,7 @@ fn usage(l: Locale) -> String {
        mahojin [options] \"<shell command>\"
        mahojin --setup [--locale <ja|en>]
        mahojin --grimoire
+       mahojin --skills [--locale <ja|en>]
        mahojin --init <zsh|bash|fish>
        mahojin --on | --off
 ",
@@ -90,6 +97,8 @@ struct Options {
     shatter: Option<i32>,
     setup: bool,
     grimoire: bool,
+    /// `--skills`: Claude Code と Codex のスキルを置く
+    skills: bool,
     /// `--init <shell>`: 詠唱モードのスクリプトを出す
     init: Option<String>,
     /// `--on` / `--off`。シェルの関数が読み込まれていれば、ここまで届かない
@@ -170,6 +179,7 @@ fn parse_args(
             }
             "--setup" => opts.setup = true,
             "--grimoire" => opts.grimoire = true,
+            "--skills" => opts.skills = true,
             "--init" => {
                 args.pop_front();
                 let shell = args.front().ok_or(ArgError::MissingValue("--init"))?;
@@ -207,6 +217,7 @@ fn parse_args(
     let alone = [
         (opts.setup, "--setup"),
         (opts.grimoire, "--grimoire"),
+        (opts.skills, "--skills"),
         (opts.init.is_some(), "--init"),
         (opts.toggle == Some(true), "--on"),
         (opts.toggle == Some(false), "--off"),
@@ -267,13 +278,16 @@ fn main() -> ExitCode {
     if let Some(shell) = &opts.init {
         return init(shell, l);
     }
+    if opts.skills {
+        return install_skills(l);
+    }
     // シェルの関数が読み込まれていれば、ここへは来ない
     if opts.toggle.is_some() {
         eprintln!(
             "mahojin: {}",
             l.pick(
-                "mahojin --on / --off には、シェルの設定に mahojin --init を書いてシェルを開き直してください（README の「詠唱モード」）",
-                "mahojin --on / --off needs mahojin --init in your shell config; then open a new shell (see \"Chanting mode\" in the README)",
+                "mahojin --on / --off には、シェルの設定に mahojin --init を書いてシェルを開き直してください（/mahojin-setup か docs/setup.ja.md の「詠唱モード」）",
+                "mahojin --on / --off needs mahojin --init in your shell config; then open a new shell (/mahojin-setup, or \"Chanting mode\" in docs/setup.md)",
             )
         );
         return ExitCode::from(2);
@@ -580,6 +594,48 @@ fn init(shell: &str, l: Locale) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `--skills`: スキルを置いて、置いたものと次にすることを知らせる。
+fn install_skills(l: Locale) -> ExitCode {
+    let Some(home) = std::env::var_os("HOME") else {
+        eprintln!(
+            "mahojin: {}",
+            l.pick(
+                "HOME が無いのでスキルの置き場所が決まりません",
+                "can't find where to put the skills: HOME is not set",
+            )
+        );
+        return ExitCode::from(1);
+    };
+    match skill::install(std::path::Path::new(&home), l) {
+        Ok(changed) => {
+            for path in &changed {
+                eprintln!("mahojin: {} {path}", l.pick("置きました", "installed"));
+            }
+            if changed.is_empty() {
+                eprintln!(
+                    "mahojin: {}",
+                    l.pick("スキルは最新です", "the skills are up to date")
+                );
+            }
+            eprintln!(
+                "  {}",
+                l.pick(
+                    "→ Claude Code か Codex で /mahojin-setup",
+                    "→ in Claude Code or Codex: /mahojin-setup",
+                )
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            match l {
+                Locale::Ja => eprintln!("mahojin: スキルを置けません: {e}"),
+                Locale::En => eprintln!("mahojin: can't install the skills: {e}"),
+            }
+            ExitCode::from(1)
+        }
+    }
+}
+
 /// `--setup`: 言語を渡されたら設定ファイルに保存し、無ければ今の設定を見せる。
 fn setup(
     new: Option<Locale>,
@@ -787,6 +843,11 @@ mod tests {
         assert_eq!(parse(&["--on"]).unwrap().toggle, Some(true));
         assert_eq!(parse(&["--off"]).unwrap().toggle, Some(false));
         assert_eq!(parse(&["--on", "ls"]), Err(ArgError::WithCommand("--on")));
+        assert!(parse(&["--skills", "--locale", "ja"]).unwrap().skills);
+        assert_eq!(
+            parse(&["--skills", "ls"]),
+            Err(ArgError::WithCommand("--skills"))
+        );
         // 素の on や init は、そういう名前のコマンドとして唱える
         let o = parse(&["on"]).unwrap();
         assert_eq!((o.toggle, o.command), (None, cmd(&["on"])));
