@@ -58,6 +58,7 @@ fn usage(l: Locale) -> String {
             "Open the grimoire: see which kinds of circles you've collected",
         ),
         ("--help, -h", "この説明を表示する", "Show this help"),
+        ("--version, -V", "版を表示する", "Show the version"),
     ];
     let mut s = String::from(
         "usage: mahojin [options] <command> [args...]
@@ -94,6 +95,7 @@ struct Options {
     /// `--on` / `--off`。シェルの関数が読み込まれていれば、ここまで届かない
     toggle: Option<bool>,
     help: bool,
+    version: bool,
     locale: Option<Locale>,
     svg_path: Option<String>,
     command: Vec<String>,
@@ -176,6 +178,7 @@ fn parse_args(
             "--on" => opts.toggle = Some(true),
             "--off" => opts.toggle = Some(false),
             "--help" | "-h" => opts.help = true,
+            "--version" | "-V" => opts.version = true,
             "--svg" => {
                 args.pop_front();
                 let path = args.front().ok_or(ArgError::MissingValue("--svg"))?;
@@ -197,7 +200,7 @@ fn parse_args(
         args.pop_front();
     }
     opts.command = args.into();
-    if opts.help {
+    if opts.help || opts.version {
         return Ok(());
     }
     // コマンドを取らない操作
@@ -248,6 +251,10 @@ fn main() -> ExitCode {
     }
     if opts.help {
         println!("{}", usage(l));
+        return ExitCode::SUCCESS;
+    }
+    if opts.version {
+        println!("mahojin {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
     if opts.setup {
@@ -838,6 +845,16 @@ mod tests {
         let o = parse(&["git", "--help"]).unwrap();
         assert!(!o.help);
         assert_eq!(o.command, cmd(&["git", "--help"]));
+    }
+
+    #[test]
+    fn version() {
+        assert!(parse(&["--version"]).unwrap().version);
+        assert!(parse(&["-V"]).unwrap().version);
+        // コマンドの後ろの --version はコマンドのもの
+        let o = parse(&["cargo", "--version"]).unwrap();
+        assert!(!o.version);
+        assert_eq!(o.command, cmd(&["cargo", "--version"]));
     }
 
     #[test]
