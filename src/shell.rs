@@ -8,6 +8,37 @@ use crate::locale::Locale;
 
 pub const SHELLS: [&str; 3] = ["zsh", "bash", "fish"];
 
+/// 詠唱モードで魔法陣を出さないコマンドの既定。設定ファイルの `chant_skip` で置き換えられる。
+pub const DEFAULT_SKIP: [&str; 7] = ["cd", "ls", "ll", "la", "pwd", "exit", "history"];
+
+/// 設定ファイルの `chant_skip`（無ければ既定）。`chant_skip = []` なら、すべてのコマンドに魔法陣を出す。
+pub fn skip_list(config: Option<&[String]>) -> Vec<String> {
+    match config {
+        Some(list) => list.to_vec(),
+        None => DEFAULT_SKIP.map(String::from).to_vec(),
+    }
+}
+
+/// 詠唱モードで、この行には魔法陣を出さないか。
+/// 1 つだけのコマンド（`|` `;` `&` を含まない）で、先頭の語が除外リストにあるときだけ飛ばす。
+/// `cd src && make` のように続きがある行は、続きのほうを唱えているので出す。
+pub fn skipped(line: &str, skip: &[String]) -> bool {
+    if line.contains(['|', ';', '&']) {
+        return false;
+    }
+    // `FOO=1 ls` の環境変数の代入は飛ばして、コマンド名を見る
+    let name = line.split_whitespace().find(|w| !is_assignment(w));
+    name.is_some_and(|name| skip.iter().any(|s| s == name))
+}
+
+fn is_assignment(word: &str) -> bool {
+    word.split_once('=').is_some_and(|(name, _)| {
+        !name.is_empty()
+            && !name.starts_with(|c: char| c.is_ascii_digit())
+            && name.chars().all(|c| c == '_' || c.is_ascii_alphanumeric())
+    })
+}
+
 /// シェルに読み込ませるスクリプト。知らないシェルなら `None`。
 /// on / off の知らせはシェルを開いたときの言語で埋め込む。
 pub fn init(shell: &str, l: Locale) -> Option<String> {
@@ -18,8 +49,8 @@ pub fn init(shell: &str, l: Locale) -> Option<String> {
         _ => return None,
     };
     let on = l.pick(
-        "✦ 詠唱モード: 打ったコマンドすべてに魔法陣が出ます（maho off で戻る）",
-        "✦ Chanting: every command you type unfolds a circle (maho off to stop)",
+        "✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（maho off で戻る）",
+        "✦ Chanting: the commands you type unfold circles (maho off to stop)",
     );
     let off = l.pick("✦ 詠唱モードを解きました", "✦ Chanting stopped");
     let taken = l.pick(
@@ -57,7 +88,7 @@ _maho_preexec() {
   # maho を自分で唱えた行には重ねない
   local -a words=(${(z)1})
   [[ $words[1] == maho || $words[1] == command && $words[2] == maho ]] && return 0
-  command maho --no-run -- "$1"
+  command maho --chant -- "$1"
 }
 
 autoload -Uz add-zsh-hook
@@ -85,7 +116,7 @@ _maho_cast() {
   local -a words
   IFS=$' \t\n' read -r -a words <<< "$1"
   [[ ${words[0]} == maho || ( ${words[0]} == command && ${words[1]} == maho ) ]] && return 0
-  command maho --no-run -- "$1"
+  command maho --chant -- "$1"
 }
 
 if [[ -n ${bash_preexec_imported:-} || -n ${__bp_imported:-} ]]; then
@@ -143,7 +174,7 @@ function _maho_preexec --on-event fish_preexec
     if test "$words[1]" = command; and test "$words[2]" = maho
         return 0
     end
-    command maho --no-run -- $argv[1]
+    command maho --chant -- $argv[1]
 end
 "#;
 
@@ -172,7 +203,33 @@ mod tests {
         assert!(init("fish", Locale::Ja).unwrap().contains("fish_preexec"));
     }
 
-    /// そのシェルが入っていれば、構文だけ確かめる（CI には zsh や fish が無いことがある）
+    #[test]
+    fn skips_only_plain_listed_commands() {
+        let skip = skip_list(None);
+        for line in ["ls", "ls -la", "  cd src", "LANG=C ls", "history"] {
+            assert!(skipped(line, &skip), "{line}");
+        }
+        for line in [
+            "git status",
+            "cd src && make",
+            "ls | grep x",
+            "ls; make",
+            "lsof",
+            // 画面を消し去るのは魔法らしいので、既定では唱える
+            "clear",
+            "",
+            "FOO=1",
+        ] {
+            assert!(!skipped(line, &skip), "{line}");
+        }
+        let custom = skip_list(Some(&["git".into(), "htop".into()]));
+        assert!(skipped("git status", &custom) && !skipped("ls", &custom));
+        // 空にすればすべてに出す
+        assert!(!skipped("ls", &skip_list(Some(&[]))));
+    }
+
+    /// そのシェルが入っていれば、構文だけ確かめる。
+    /// 手元に zsh や fish が無くても通るようにしてあるが、CI では `MAHO_TEST_SHELLS=1` で必須にする。
     fn parses_in(shell: &str, check: &[&str]) {
         use std::io::Write;
         let Ok(mut child) = std::process::Command::new(shell)
@@ -180,6 +237,10 @@ mod tests {
             .stdin(std::process::Stdio::piped())
             .spawn()
         else {
+            assert!(
+                std::env::var_os("MAHO_TEST_SHELLS").is_none(),
+                "{shell} is not installed"
+            );
             return;
         };
         // 英語の知らせには ' が入る（can't）ので、両方の言語で確かめる

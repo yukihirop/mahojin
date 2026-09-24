@@ -15,6 +15,7 @@ rand_chacha = "0.10.0"
 rand_core = "0.10.1"
 resvg = { version = "0.48.1", default-features = false }
 sha2 = "0.11.0"
+toml_edit = "0.25.15"
 
 # 依存（resvg など）だけは開発・テストでも最適化する。ラスタライズのテストが遅くなりすぎるため
 [profile.dev.package."*"]

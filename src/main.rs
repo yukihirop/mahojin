@@ -1,4 +1,5 @@
 mod circle;
+mod config;
 mod grimoire;
 mod locale;
 mod render;
@@ -77,6 +78,8 @@ struct Options {
     explain: bool,
     share: bool,
     no_run: bool,
+    /// 詠唱モードのフックから呼ばれた。`--no-run` に加えて、除外リストのコマンドを飛ばす
+    chant: bool,
     setup: bool,
     grimoire: bool,
     help: bool,
@@ -148,6 +151,11 @@ fn parse_args(
             "--explain" => opts.explain = true,
             "--share" => opts.share = true,
             "--no-run" => opts.no_run = true,
+            // 詠唱モードのスクリプトだけが使う。usage には出さない
+            "--chant" => {
+                opts.chant = true;
+                opts.no_run = true;
+            }
             "--setup" => opts.setup = true,
             "--grimoire" => opts.grimoire = true,
             "--help" | "-h" => opts.help = true,
@@ -185,14 +193,31 @@ fn parse_args(
 
 fn main() -> ExitCode {
     let env = |k: &str| std::env::var(k).ok();
-    let config_path = locale::config_path(env);
-    let config = config_path.as_deref().and_then(locale::read_config);
+    let config_path = config::path(env);
+    // 読めない設定ファイルは、言語が決まってから知らせて、既定の設定で続ける
+    let (config, config_error) = match config_path.as_deref().map(config::Config::load) {
+        Some(Err(e)) => (config::Config::default(), Some(e)),
+        Some(Ok(c)) => (c, None),
+        None => (config::Config::default(), None),
+    };
     let mut opts = Options::default();
     let parsed = parse_args(std::env::args().skip(1).collect(), &mut opts);
     let (l, source) = match opts.locale {
         Some(l) => (l, Source::Flag),
-        None => locale::detect(env, config),
+        None => locale::detect(env, config.locale),
     };
+    if let (Some(e), Some(path)) = (&config_error, &config_path) {
+        match l {
+            Locale::Ja => eprintln!(
+                "maho: 設定ファイルを読めないので、既定の設定で続けます: {}\n{e}",
+                path.display()
+            ),
+            Locale::En => eprintln!(
+                "maho: can't read the config file, using the defaults: {}\n{e}",
+                path.display()
+            ),
+        }
+    }
     if let Err(e) = parsed {
         eprintln!("maho: {}\n{}", e.message(l), usage(l));
         return ExitCode::from(2);
@@ -202,7 +227,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if opts.setup {
-        return setup(opts.locale, (l, source), config_path);
+        return setup(opts.locale, (l, source), config_path, &config);
     }
     let grimoire_path = grimoire::path(env);
     if opts.grimoire {
@@ -227,6 +252,9 @@ fn main() -> ExitCode {
 
     // 魔法陣を決めるのは、ユーザーが打ったコマンド文字列そのもの。
     let spell = args.join(" ");
+    if opts.chant && shell::skipped(&spell, &shell::skip_list(config.chant_skip.as_deref())) {
+        return ExitCode::SUCCESS;
+    }
     let circle = MagicCircle::from_command(&spell);
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
     // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
@@ -392,7 +420,12 @@ fn init(shell: &str, l: Locale) -> ExitCode {
 }
 
 /// `--setup`: 言語を渡されたら設定ファイルに保存し、無ければ今の設定を見せる。
-fn setup(new: Option<Locale>, (l, source): (Locale, Source), path: Option<PathBuf>) -> ExitCode {
+fn setup(
+    new: Option<Locale>,
+    (l, source): (Locale, Source),
+    path: Option<PathBuf>,
+    config: &config::Config,
+) -> ExitCode {
     let Some(path) = path else {
         eprintln!(
             "maho: {}",
@@ -411,11 +444,17 @@ fn setup(new: Option<Locale>, (l, source): (Locale, Source), path: Option<PathBu
             Source::System => l.pick("LANG などの環境変数", "LANG and friends"),
             Source::Default => l.pick("既定", "default"),
         };
-        println!("locale  {}  ({from})", l.code());
-        println!("config  {}", path.display());
+        let skip = shell::skip_list(config.chant_skip.as_deref()).join(" ");
+        let skip_from = match config.chant_skip {
+            Some(_) => l.pick("設定ファイル", "config file"),
+            None => l.pick("既定", "default"),
+        };
+        println!("locale      {}  ({from})", l.code());
+        println!("chant_skip  {skip}  ({skip_from})");
+        println!("config      {}", path.display());
         return ExitCode::SUCCESS;
     };
-    if let Err(e) = locale::write_config(&path, new) {
+    if let Err(e) = config::save_locale(&path, new) {
         match new {
             Locale::Ja => eprintln!("maho: 設定を保存できません: {}: {e}", path.display()),
             Locale::En => eprintln!("maho: can't save the config: {}: {e}", path.display()),
@@ -540,6 +579,13 @@ mod tests {
         let o = parse(&["--share", "git", "status"]).unwrap();
         assert!(o.share);
         assert_eq!(o.command, cmd(&["git", "status"]));
+    }
+
+    #[test]
+    fn chant_flag_implies_no_run() {
+        let o = parse(&["--chant", "--", "ls -la"]).unwrap();
+        assert!(o.chant && o.no_run);
+        assert_eq!(o.command, ["ls -la"]);
     }
 
     #[test]

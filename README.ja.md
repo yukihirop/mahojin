@@ -81,7 +81,7 @@ alias deploy='maho make deploy'     # 本番に出すとき
 ### 詠唱モード
 
 リリース作業のあいだだけ、全部のコマンドで魔法陣を見たいこともあります。シェルの設定に 1 行足すと、
-`maho on` から `maho off` までのあいだ、打ったコマンドすべてに魔法陣が出ます。
+`maho on` から `maho off` までのあいだ、打ったコマンドに魔法陣が出ます。
 
 ```sh
 eval "$(maho init zsh)"     # ~/.zshrc
@@ -91,7 +91,7 @@ maho init fish | source     # ~/.config/fish/config.fish
 
 ```console
 $ maho on
-✦ 詠唱モード: 打ったコマンドすべてに魔法陣が出ます（maho off で戻る）
+✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（maho off で戻る）
 $ git tag v1.2.0 && git push --tags     # この行全体が 1 つの呪文になる
 $ maho off
 ```
@@ -99,6 +99,14 @@ $ maho off
 コマンドの前に `maho` を足すのではなく、実行の直前に魔法陣だけを描いて、実行はシェルに任せます。
 `cd` もエイリアスもパイプもそのまま動きます。オンになるのはそのシェルの中だけで、閉じれば元に戻ります。
 エージェントがコマンドを打つシェルは対話用の設定を読まないので、魔法陣が出るのは人間が打ったときだけです。
+
+`ls` や `cd` のように何度も打つコマンドには出しません。飛ばすのは、パイプや `&&` の無い 1 つだけのコマンドで、
+先頭が次のどれかのときです。`cd src && make` なら出ます。設定ファイル（`maho --setup` で場所が出ます）の
+`chant_skip` で入れ替えられ、`[]` にすればすべてのコマンドに出ます。
+
+```toml
+chant_skip = ["cd", "ls", "ll", "la", "pwd", "exit", "history"]   # 既定
+```
 
 bash には zsh や fish のような実行直前のフックが無いので、DEBUG トラップで作っています。
 [bash-preexec](https://github.com/rcaloras/bash-preexec) を先に読み込んでいれば、そちらに乗ります。
@@ -134,7 +142,7 @@ maho --locale en ls        # 今回だけ英語
 ```
 
 決まる順番は `--locale` > `MAHO_LOCALE` > 設定ファイル
-（`$XDG_CONFIG_HOME/maho/config`、無ければ `~/.config/maho/config`）> `LC_ALL` / `LC_MESSAGES` / `LANG`
+（`$XDG_CONFIG_HOME/maho/config.toml`、無ければ `~/.config/maho/config.toml`）> `LC_ALL` / `LC_MESSAGES` / `LANG`
 （`ja` で始まれば日本語）> 英語 です。
 
 ## 魔法の格

@@ -81,7 +81,7 @@ you want a circle every time, but the seconds do add up.
 ### Chanting mode
 
 Sometimes you want a circle on every command, just for the length of a release. Add one line to your
-shell config, and between `maho on` and `maho off` every command you type unfolds a circle.
+shell config, and between `maho on` and `maho off` the commands you type unfold circles.
 
 ```sh
 eval "$(maho init zsh)"     # ~/.zshrc
@@ -91,7 +91,7 @@ maho init fish | source     # ~/.config/fish/config.fish
 
 ```console
 $ maho on
-✦ Chanting: every command you type unfolds a circle (maho off to stop)
+✦ Chanting: the commands you type unfold circles (maho off to stop)
 $ git tag v1.2.0 && git push --tags     # the whole line is one spell
 $ maho off
 ```
@@ -100,6 +100,15 @@ It doesn't put `maho` in front of your commands. It draws the circle just before
 leaves the running to the shell, so `cd`, aliases and pipes all work as usual. It only lasts for that
 shell. The shells coding agents type into don't load your interactive config, so the circles only
 appear when a human types.
+
+Commands you type all the time, like `ls` and `cd`, get no circle. A line is skipped only when it is a
+single command (no pipes, no `&&`) starting with one of the names below, so `cd src && make` still
+gets one. Change the list with `chant_skip` in the config file (`maho --setup` shows where it is);
+set it to `[]` to cast on every command.
+
+```toml
+chant_skip = ["cd", "ls", "ll", "la", "pwd", "exit", "history"]   # the default
+```
 
 bash has no pre-command hook like zsh and fish do, so maho builds one from the DEBUG trap. If
 [bash-preexec](https://github.com/rcaloras/bash-preexec) is loaded first, it hooks into that instead.
@@ -136,7 +145,7 @@ maho --locale ja ls        # Japanese just this once
 ```
 
 The language is chosen in this order: `--locale` > `MAHO_LOCALE` > the config file
-(`$XDG_CONFIG_HOME/maho/config`, or `~/.config/maho/config`) > `LC_ALL` / `LC_MESSAGES` / `LANG`
+(`$XDG_CONFIG_HOME/maho/config.toml`, or `~/.config/maho/config.toml`) > `LC_ALL` / `LC_MESSAGES` / `LANG`
 (Japanese if it starts with `ja`) > English.
 
 ## Spell tiers

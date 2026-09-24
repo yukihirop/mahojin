@@ -1,10 +1,7 @@
-//! 表示する言語と、それを覚えておく設定ファイル。
+//! 表示する言語。
 //!
 //! 決める順番: `--locale` > `MAHO_LOCALE` > 設定ファイル > `LC_ALL` / `LC_MESSAGES` / `LANG` > 英語。
-//! 設定ファイルは `$XDG_CONFIG_HOME/maho/config`（無ければ `~/.config/maho/config`）で、
-//! 中身は `locale = ja` の 1 行だけ。
-
-use std::path::{Path, PathBuf};
+//! 設定ファイルの読み書きは `config` にある。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Locale {
@@ -66,33 +63,6 @@ pub fn detect(env: impl Fn(&str) -> Option<String>, config: Option<Locale>) -> (
     }
 }
 
-pub fn config_path(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    let base = match env("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
-        Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(env("HOME")?).join(".config"),
-    };
-    Some(base.join("maho").join("config"))
-}
-
-/// 設定ファイルの locale。ファイルが無い・読めない・値がおかしいときは `None`。
-pub fn read_config(path: &Path) -> Option<Locale> {
-    let text = std::fs::read_to_string(path).ok()?;
-    text.lines().find_map(|line| {
-        let (key, value) = line.split_once('=')?;
-        if key.trim() != "locale" {
-            return None;
-        }
-        Locale::parse(value.trim().trim_matches('"'))
-    })
-}
-
-pub fn write_config(path: &Path, locale: Locale) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    std::fs::write(path, format!("locale = {}\n", locale.code()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,30 +100,5 @@ mod tests {
             detect(env(&[("MAHO_LOCALE", "fr")]), ja),
             (Locale::Ja, Source::Config)
         );
-    }
-
-    #[test]
-    fn config_path_follows_xdg() {
-        assert_eq!(
-            config_path(env(&[("XDG_CONFIG_HOME", "/x"), ("HOME", "/h")])),
-            Some(PathBuf::from("/x/maho/config"))
-        );
-        assert_eq!(
-            config_path(env(&[("HOME", "/h")])),
-            Some(PathBuf::from("/h/.config/maho/config"))
-        );
-        assert_eq!(config_path(env(&[])), None);
-    }
-
-    #[test]
-    fn config_round_trip() {
-        let dir = std::env::temp_dir().join(format!("maho-test-{}", std::process::id()));
-        let path = dir.join("maho").join("config");
-        assert_eq!(read_config(&path), None);
-        write_config(&path, Locale::En).unwrap();
-        assert_eq!(read_config(&path), Some(Locale::En));
-        write_config(&path, Locale::Ja).unwrap();
-        assert_eq!(read_config(&path), Some(Locale::Ja));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
