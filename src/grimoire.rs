@@ -133,11 +133,13 @@ impl Grimoire {
 
     /// 唱えた魔法陣を記録し、今回初めて埋まった項目を返す。
     pub fn record(&mut self, c: &MagicCircle) -> Vec<Item> {
-        let before = self.items();
-        match self.entries.iter_mut().find(|(h, _)| *h == c.hash) {
-            Some((_, count)) => *count += 1,
-            None => self.entries.push((c.hash, 1)),
+        // 前にも唱えた呪文なら、埋まる項目は無い
+        if let Some((_, count)) = self.entries.iter_mut().find(|(h, _)| *h == c.hash) {
+            *count += 1;
+            return Vec::new();
         }
+        let before = self.items();
+        self.entries.push((c.hash, 1));
         items_of(c)
             .into_iter()
             .filter(|i| !before.contains(i))
@@ -319,10 +321,12 @@ mod tests {
 
     #[test]
     fn many_spells_fill_the_book() {
-        let mut g = Grimoire::default();
-        for i in 0..3000 {
-            g.record(&MagicCircle::from_command(&format!("cmd {i}")));
-        }
+        // record を 3000 回呼ぶと毎回全体を数え直して遅いので、直接詰める
+        let g = Grimoire {
+            entries: (0..3000)
+                .map(|i| (MagicCircle::from_command(&format!("cmd {i}")).hash, 1))
+                .collect(),
+        };
         let total: usize = pages().iter().map(|(_, _, items)| items.len()).sum();
         assert_eq!(g.items().len(), total);
         let page = show(&g, Locale::Ja);
