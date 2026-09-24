@@ -1,16 +1,16 @@
-# maho
+# mahojin
 
 English | [日本語](README.ja.md)
 
 **Cast your everyday commands as spells.**
 
-`maho` is a wrapper you can put in front of any CLI command. Before running the command,
+`mahojin` is a wrapper you can put in front of any CLI command. Before running the command,
 it unfolds a magic circle made just for that command, right in your terminal.
 
-![maho demo](assets/demo.gif)
+![mahojin demo](assets/demo.gif)
 
 ```console
-$ maho git status
+$ mahojin git status
 ```
 
 - **The same spell always summons the same circle.** The circle is derived from the SHA-256 of
@@ -28,15 +28,22 @@ $ maho git status
 ## Install
 
 ```sh
-cargo install --git https://github.com/yukihirop/maho
+cargo install --git https://github.com/yukihirop/mahojin
 ```
 
 ## Usage
 
 ```sh
-maho git status
-maho cargo build --release
-maho "cargo build && ls"      # a single argument containing spaces goes to the shell (sh -c)
+mahojin git status
+mahojin cargo build --release
+mahojin "cargo build && ls"    # a single argument containing spaces goes to the shell (sh -c)
+```
+
+It's a bit long to type every time, so a short alias is a good idea.
+
+```sh
+alias m='mahojin'    # in ~/.zshrc or similar
+m git status
 ```
 
 | Option | Meaning |
@@ -50,10 +57,10 @@ maho "cargo build && ls"      # a single argument containing spaces goes to the 
 | `--grimoire` | Open the grimoire: see which kinds of circles you've collected |
 | `--help`, `-h` | Show usage |
 
-Options go only before the command. In `maho cargo --explain E0308`, `--explain` belongs to cargo.
+Options go only before the command. In `mahojin cargo --explain E0308`, `--explain` belongs to cargo.
 
 ```console
-$ maho --explain git status
+$ mahojin --explain git status
 ✦ Magic circle unfolded: git status
   hash      e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6
   tier      major spell
@@ -64,60 +71,60 @@ $ maho --explain git status
 
 ### Cast it when it counts
 
-Coding agents type commands for us in a split second now. `maho` is a deliberate waste: a human casting
+Coding agents type commands for us in a split second now. `mahojin` is a deliberate waste: a human casting
 a command by hand and spending a second watching a circle unfold. Waste is a luxury only when it's
 occasional, so rather than putting it in front of everything, save it for the commands that mark a moment.
 
 ```sh
-alias push='maho git push'          # sending off work you've finished
-alias release='maho git tag'        # tagging a release
-alias deploy='maho make deploy'     # shipping to production
+alias push='mahojin git push'         # sending off work you've finished
+alias release='mahojin git tag'       # tagging a release
+alias deploy='mahojin make deploy'    # shipping to production
 ```
 
 Arguments are part of the spell, so `release v1.2.0` and `release v1.3.0` get different circles and
-tiers. A release that draws an ultimate spell is surely blessed. You can still `alias git='maho git'` if
+tiers. A release that draws an ultimate spell is surely blessed. You can still `alias git='mahojin git'` if
 you want a circle every time, but the seconds do add up.
 
 ### Chanting mode
 
 Sometimes you want a circle on every command, just for the length of a release. Add one line to your
-shell config, and between `maho on` and `maho off` the commands you type unfold circles.
+shell config, and between `mahojin on` and `mahojin off` the commands you type unfold circles.
 
 ```sh
-eval "$(maho init zsh)"     # ~/.zshrc
-eval "$(maho init bash)"    # ~/.bashrc
-maho init fish | source     # ~/.config/fish/config.fish
+eval "$(mahojin init zsh)"     # ~/.zshrc
+eval "$(mahojin init bash)"    # ~/.bashrc
+mahojin init fish | source     # ~/.config/fish/config.fish
 ```
 
 ```console
-$ maho on
-✦ Chanting: the commands you type unfold circles (maho off to stop)
-$ git tag v1.2.0 && git push --tags     # the whole line is one spell
-$ maho off
+$ mahojin on
+✦ Chanting: the commands you type unfold circles (mahojin off to stop)
+$ git tag v1.2.0 && git push --tags    # the whole line is one spell
+$ mahojin off
 ```
 
-It doesn't put `maho` in front of your commands. It draws the circle just before each command runs and
+It doesn't put `mahojin` in front of your commands. It draws the circle just before each command runs and
 leaves the running to the shell, so `cd`, aliases and pipes all work as usual. It only lasts for that
 shell. The shells coding agents type into don't load your interactive config, so the circles only
 appear when a human types.
 
 Commands you type all the time, like `ls` and `cd`, get no circle. A line is skipped only when it is a
 single command (no pipes, no `&&`) starting with one of the names below, so `cd src && make` still
-gets one. Change the list with `chant_skip` in the config file (`maho --setup` shows where it is);
+gets one. Change the list with `chant_skip` in the config file (`mahojin --setup` shows where it is);
 set it to `[]` to cast on every command.
 
 ```toml
-chant_skip = ["cd", "ls", "ll", "la", "pwd", "exit", "history"]   # the default
+chant_skip = ["cd", "ls", "ll", "la", "pwd", "exit", "history"]    # the default
 ```
 
-bash has no pre-command hook like zsh and fish do, so maho builds one from the DEBUG trap. If
+bash has no pre-command hook like zsh and fish do, so mahojin builds one from the DEBUG trap. If
 [bash-preexec](https://github.com/rcaloras/bash-preexec) is loaded first, it hooks into that instead.
-If something else already uses the DEBUG trap, maho stays out and tells you so.
+If something else already uses the DEBUG trap, mahojin stays out and tells you so.
 
 ### Failed spells
 
 When a command fails (exit code 1 to 127), its circle shatters: cracks run through it and the shards
-drift apart and fall, in about a second. This happens both with `maho <command>` and in chanting mode.
+drift apart and fall, in about a second. This happens both with `mahojin <command>` and in chanting mode.
 Stopping a command with Ctrl-C or another signal doesn't shatter anything, and the exit code is still
 the command's own.
 
@@ -130,10 +137,10 @@ shatter = false
 ### Showing off your circle
 
 ```console
-$ maho --share git status | pbcopy
+$ mahojin --share git status | pbcopy
 ```
 
-The command is not run. The post text goes to stdout, a 1200px image (`maho-<first 8 hex of the hash>.png`)
+The command is not run. The post text goes to stdout, a 1200px image (`mahojin-<first 8 hex of the hash>.png`)
 is written to the current directory, and a URL that opens X's composer with the text filled in goes to stderr.
 Attach the image yourself.
 
@@ -143,8 +150,8 @@ I cast "git status" and a major spell circle unfolded ✦
 breach layout / wheel / star / 3-fold symmetry
 Sigil e62b04aa
 
-#maho
-https://github.com/yukihirop/maho
+#mahojin
+https://github.com/yukihirop/mahojin
 ```
 
 ### Language
@@ -152,13 +159,13 @@ https://github.com/yukihirop/maho
 Messages, names and the post text come in Japanese or English.
 
 ```sh
-maho --setup --locale en   # save English as your language
-maho --setup               # show the current language and where it came from
-maho --locale ja ls        # Japanese just this once
+mahojin --setup --locale en    # save English as your language
+mahojin --setup                # show the current language and where it came from
+mahojin --locale ja ls         # Japanese just this once
 ```
 
-The language is chosen in this order: `--locale` > `MAHO_LOCALE` > the config file
-(`$XDG_CONFIG_HOME/maho/config.toml`, or `~/.config/maho/config.toml`) > `LC_ALL` / `LC_MESSAGES` / `LANG`
+The language is chosen in this order: `--locale` > `MAHOJIN_LOCALE` > the config file
+(`$XDG_CONFIG_HOME/mahojin/config.toml`, or `~/.config/mahojin/config.toml`) > `LC_ALL` / `LC_MESSAGES` / `LANG`
 (Japanese if it starts with `ja`) > English.
 
 ## Spell tiers
@@ -183,7 +190,7 @@ before you cast.
 
 ## Grimoire
 
-Every circle you cast is written into a grimoire. `maho --grimoire` shows how much of it you've filled:
+Every circle you cast is written into a grimoire. `mahojin --grimoire` shows how much of it you've filled:
 the 38 kinds across tiers, shapes, layouts, ornaments, symmetries, scripts and bands, with the ones you
 haven't met yet hidden as `???`.
 
@@ -208,7 +215,7 @@ There are about 65 million + α combinations in all, so you'll hardly ever meet 
 Collecting every skeleton takes around 15,000 different commands, so completing it is
 practically impossible; take your time. Arguments are part of the spell, so every `git commit -m "..."` casts a new one.
 
-The grimoire lives at `$XDG_DATA_HOME/maho/grimoire` (or `~/.local/share/maho/grimoire`). It keeps
+The grimoire lives at `$XDG_DATA_HOME/mahojin/grimoire` (or `~/.local/share/mahojin/grimoire`). It keeps
 only each command's hash, how many times you cast it, whether it drew the tier that isn't in the table,
 and which of the hidden entries you've met; never the command itself or when you cast it.
 
@@ -224,7 +231,7 @@ and which of the hidden entries you've met; never the command itself or when you
    terminal: 16 frames that draw the circle from the outer band inward
 
 What each kind looks like is for you to find out by casting. The ones you've met are in the grimoire
-(`maho --grimoire`).
+(`mahojin --grimoire`).
 
 Cast on a special day or at a special hour, though, and the circle may change color while keeping its
 shape. Which days, we won't say.
@@ -247,23 +254,23 @@ set -g allow-passthrough on
 ```
 
 Inside tmux, Ghostty and Kitty get the image through Unicode placeholders, so it stays tied to its text
-cells and scrolls and redraws with tmux. iTerm2 has no such mechanism, so maho works out where the pane
+cells and scrolls and redraws with tmux. iTerm2 has no such mechanism, so mahojin works out where the pane
 sits on the outer screen and draws there; the image may linger when you switch windows.
 
 | Environment variable | Meaning |
 | --- | --- |
-| `MAHO_GRAPHICS=kitty\|iterm\|none` | Skip detection and force a method |
-| `MAHO_ANIMATION=off` | Skip the animations and show one still: the finished circle, or the shattered one |
-| `MAHO_LOCALE=ja\|en` | Use this language, overriding the config file |
-| `MAHO_GRIMOIRE=off` | Don't write casts into the grimoire |
+| `MAHOJIN_GRAPHICS=kitty\|iterm\|none` | Skip detection and force a method |
+| `MAHOJIN_ANIMATION=off` | Skip the animations and show one still: the finished circle, or the shattered one |
+| `MAHOJIN_LOCALE=ja\|en` | Use this language, overriding the config file |
+| `MAHOJIN_GRIMOIRE=off` | Don't write casts into the grimoire |
 
 ## Regenerating the README images
 
-The GIF and gallery in `assets/` are the images `maho` actually sent to the terminal, with the terminal
+The GIF and gallery in `assets/` are the images `mahojin` actually sent to the terminal, with the terminal
 window and command output drawn around them (the commands are replaced with stubs and never really run).
 
 ```sh
-python3 scripts/demo.py   # needs cargo, ImageMagick and script(1)
+python3 scripts/demo.py    # needs cargo, ImageMagick and script(1)
 ```
 
 ## License

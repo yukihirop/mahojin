@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """README 用のデモ GIF とギャラリー画像を作る。
 
-魔法陣のコマは、release ビルドの maho が Kitty graphics protocol で端末へ送った
+魔法陣のコマは、release ビルドの mahojin が Kitty graphics protocol で端末へ送った
 画像をそのまま抜き出して使う。ターミナルの枠・プロンプト・コマンドの出力だけを
 ImageMagick で描き足す。実際のコマンドは走らせず、何もしない偽物を PATH に置く。
 
 必要なもの: cargo, ImageMagick (magick), script(1)
 使い方:     python3 scripts/demo.py   # assets/demo.gif と assets/gallery.jpg を書き出す
-フォント:   既定は macOS の Menlo（✦ の字を持っている）。MAHO_DEMO_FONT で差し替えられる。
+フォント:   既定は macOS の Menlo（✦ の字を持っている）。MAHOJIN_DEMO_FONT で差し替えられる。
 """
 
 import base64
@@ -21,8 +21,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
-MAHO = ROOT / "target" / "release" / "maho"
-FONT = os.environ.get("MAHO_DEMO_FONT", "/System/Library/Fonts/Menlo.ttc")
+MAHOJIN = ROOT / "target" / "release" / "mahojin"
+FONT = os.environ.get("MAHOJIN_DEMO_FONT", "/System/Library/Fonts/Menlo.ttc")
+# 暦の兆しが何も無い日時
+ORDINARY_DAY = "2026-09-24 12:00"
 
 # デモで打つコマンドと、その後に出す（それらしい）出力。
 # 魔法の格が 小 → 中 → 大 → 極大 と上がっていく順に並べる
@@ -43,9 +45,9 @@ DEMOS = [
         "nothing to commit, working tree clean",
     ]),
     ("cargo run", [
-        "   Compiling maho v0.1.0 (~/maho)",
+        "   Compiling mahojin v0.1.0 (~/mahojin)",
         "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.02s",
-        "     Running `target/debug/maho`",
+        "     Running `target/debug/mahojin`",
     ]),
 ]
 
@@ -64,7 +66,7 @@ BG, BAR = "#11111b", "#1e1e2e"
 
 
 def capture(spell: str, stub_dir: Path, work: Path) -> tuple[list[Path], int, str]:
-    """maho に spell を唱えさせ、端末へ送られたコマの PNG と、画像の高さ（行数）と、
+    """mahojin に spell を唱えさせ、端末へ送られたコマの PNG と、画像の高さ（行数）と、
     画像の下に出た 1 行（大魔法以上で出る名乗り）を返す。
     spell は引用符付きの引数（-m 'fix'）もシェルと同じように割って渡す。"""
     out = work / "tty.out"
@@ -73,12 +75,14 @@ def capture(spell: str, stub_dir: Path, work: Path) -> tuple[list[Path], int, st
         "TERM_PROGRAM": "ghostty",
         "HOME": os.environ.get("HOME", "/tmp"),
         # 名乗りは英語で出させる（デモのフォントに日本語が無いことがある）
-        "MAHO_LOCALE": "en",
+        "MAHOJIN_LOCALE": "en",
         # デモで唱えた呪文を図鑑に残さない
-        "MAHO_GRIMOIRE": "off",
+        "MAHOJIN_GRIMOIRE": "off",
+        # 暦の兆しで色が変わらないよう、何でもない日にする
+        "MAHOJIN_NOW": ORDINARY_DAY,
     }
     subprocess.run(
-        ["script", "-q", str(out), str(MAHO), *shlex.split(spell)],
+        ["script", "-q", str(out), str(MAHOJIN), *shlex.split(spell)],
         env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=True,
     )
     data = out.read_bytes()
@@ -97,7 +101,7 @@ def capture(spell: str, stub_dir: Path, work: Path) -> tuple[list[Path], int, st
         p.write_bytes(png)
         paths.append(p)
     if not paths:
-        sys.exit(f"maho から画像を受け取れませんでした: {spell}")
+        sys.exit(f"mahojin から画像を受け取れませんでした: {spell}")
     return paths, rows, after
 
 
@@ -114,7 +118,7 @@ def terminal_frame(dest: Path, typed: str, circle: Path | None, rows: int, outpu
         "-fill", "#f9e2af", "-draw", "circle 42,16 48,16",
         "-fill", "#a6e3a1", "-draw", "circle 64,16 70,16",
         "-font", FONT, "-pointsize", "14", "-fill", "#6c7086",
-        "-annotate", "+330+21", "maho",
+        "-annotate", "+330+21", "mahojin",
         "-pointsize", "17",
         "-fill", "#a6e3a1", "-annotate", "+20+60", "$",
         "-fill", "#cdd6f4", "-annotate", "+40+60", typed,
@@ -145,11 +149,11 @@ def build_demo(stub_dir: Path, work: Path):
 
     for spell, output in DEMOS:
         circles, rows, tier = capture(spell, stub_dir, work)
-        line = f"maho {spell}"
+        line = f"mahojin {spell}"
         for k in range(0, len(line) + 1, 2):
             add(line[:k], None, [], 5)
         add(line, None, [], 35)
-        # maho と同じく 16 コマをおよそ 45ms 間隔で
+        # mahojin と同じく 16 コマをおよそ 45ms 間隔で
         for c in circles:
             add(line, c, [], 5, rows)
         head = [tier] if tier else []
@@ -168,9 +172,9 @@ def build_gallery(stub_dir: Path, work: Path):
     tiles = []
     for spell in GALLERY:
         res = subprocess.run(
-            [str(MAHO), "--share", *shlex.split(spell)],
-            cwd=work, env={"PATH": "/usr/bin:/bin", "MAHO_LOCALE": "en", "MAHO_GRIMOIRE": "off",
-                 "HOME": "/tmp"},
+            [str(MAHOJIN), "--share", *shlex.split(spell)],
+            cwd=work, env={"PATH": "/usr/bin:/bin", "MAHOJIN_LOCALE": "en", "MAHOJIN_GRIMOIRE": "off",
+                 "MAHOJIN_NOW": ORDINARY_DAY, "HOME": "/tmp"},
             stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True,
         )
         image = re.search(r"image\s+(\S+)", res.stderr).group(1)

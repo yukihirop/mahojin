@@ -143,9 +143,9 @@ impl Moment {
         valid.then_some(m)
     }
 
-    /// 手元の時計（タイムゾーン込み）。`MAHO_NOW` があればその日時にする（確かめる用）。
+    /// 手元の時計（タイムゾーン込み）。`MAHOJIN_NOW` があればその日時にする（確かめる用）。
     pub fn now(env: impl Fn(&str) -> Option<String>) -> Option<Self> {
-        if let Some(s) = env("MAHO_NOW") {
+        if let Some(s) = env("MAHOJIN_NOW") {
             return Self::parse(&s);
         }
         local_now()

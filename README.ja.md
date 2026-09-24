@@ -1,16 +1,16 @@
-# maho
+# mahojin
 
 [English](README.md) | 日本語
 
 **いつものコマンドを、魔法として唱える。**
 
-`maho` はどんな CLI コマンドの前にも付けられるラッパーです。コマンドを実行する前に、
+`mahojin` はどんな CLI コマンドの前にも付けられるラッパーです。コマンドを実行する前に、
 そのコマンド専用の魔法陣を端末に展開します。
 
-![maho のデモ](assets/demo.gif)
+![mahojin のデモ](assets/demo.gif)
 
 ```console
-$ maho git status
+$ mahojin git status
 ```
 
 - **同じ呪文からは、必ず同じ魔法陣が出ます。**魔法陣はコマンド文字列の SHA-256 から決まります。
@@ -28,15 +28,22 @@ $ maho git status
 ## インストール
 
 ```sh
-cargo install --git https://github.com/yukihirop/maho
+cargo install --git https://github.com/yukihirop/mahojin
 ```
 
 ## 使い方
 
 ```sh
-maho git status
-maho cargo build --release
-maho "cargo build && ls"      # 空白を含む引数 1 つはシェル（sh -c）に渡す
+mahojin git status
+mahojin cargo build --release
+mahojin "cargo build && ls"    # 空白を含む引数 1 つはシェル（sh -c）に渡す
+```
+
+毎回打つには少し長いので、短いエイリアスを付けておくのがおすすめです。
+
+```sh
+alias m='mahojin'    # ~/.zshrc など
+m git status
 ```
 
 | オプション | 意味 |
@@ -50,10 +57,10 @@ maho "cargo build && ls"      # 空白を含む引数 1 つはシェル（sh -c�
 | `--grimoire` | 図鑑を開く。これまでに集めた魔法陣の種類を見る |
 | `--help`, `-h` | 使い方を表示する |
 
-オプションはコマンドより前にだけ置けます。`maho cargo --explain E0308` の `--explain` は cargo のものです。
+オプションはコマンドより前にだけ置けます。`mahojin cargo --explain E0308` の `--explain` は cargo のものです。
 
 ```console
-$ maho --explain git status
+$ mahojin --explain git status
 ✦ 魔法陣展開: git status
   hash      e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6
   tier      大魔法
@@ -64,48 +71,48 @@ $ maho --explain git status
 
 ### ここぞというときに唱える
 
-コマンドはエージェントが秒で打ってくれる時代です。`maho` は、人間があえて手で唱え、1 秒待って
+コマンドはエージェントが秒で打ってくれる時代です。`mahojin` は、人間があえて手で唱え、1 秒待って
 魔法陣を眺めるための無駄です。無駄はたまにやるから贅沢なので、全部のコマンドに付けるより、
 節目のコマンドにだけ付けるのがおすすめです。
 
 ```sh
-alias push='maho git push'          # 仕上げた変更を送り出すとき
-alias release='maho git tag'        # リリースのタグを打つとき
-alias deploy='maho make deploy'     # 本番に出すとき
+alias push='mahojin git push'         # 仕上げた変更を送り出すとき
+alias release='mahojin git tag'       # リリースのタグを打つとき
+alias deploy='mahojin make deploy'    # 本番に出すとき
 ```
 
 引数も呪文のうちなので、`release v1.2.0` と `release v1.3.0` では魔法陣も格も変わります。
 極大魔法を引いたリリースは、きっと縁起がいいはずです。どうしても毎回見たいなら
-`alias git='maho git'` もできますが、1 秒の待ちが積み重なることはお忘れなく。
+`alias git='mahojin git'` もできますが、1 秒の待ちが積み重なることはお忘れなく。
 
 ### 詠唱モード
 
 リリース作業のあいだだけ、全部のコマンドで魔法陣を見たいこともあります。シェルの設定に 1 行足すと、
-`maho on` から `maho off` までのあいだ、打ったコマンドに魔法陣が出ます。
+`mahojin on` から `mahojin off` までのあいだ、打ったコマンドに魔法陣が出ます。
 
 ```sh
-eval "$(maho init zsh)"     # ~/.zshrc
-eval "$(maho init bash)"    # ~/.bashrc
-maho init fish | source     # ~/.config/fish/config.fish
+eval "$(mahojin init zsh)"     # ~/.zshrc
+eval "$(mahojin init bash)"    # ~/.bashrc
+mahojin init fish | source     # ~/.config/fish/config.fish
 ```
 
 ```console
-$ maho on
-✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（maho off で戻る）
-$ git tag v1.2.0 && git push --tags     # この行全体が 1 つの呪文になる
-$ maho off
+$ mahojin on
+✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（mahojin off で戻る）
+$ git tag v1.2.0 && git push --tags    # この行全体が 1 つの呪文になる
+$ mahojin off
 ```
 
-コマンドの前に `maho` を足すのではなく、実行の直前に魔法陣だけを描いて、実行はシェルに任せます。
+コマンドの前に `mahojin` を足すのではなく、実行の直前に魔法陣だけを描いて、実行はシェルに任せます。
 `cd` もエイリアスもパイプもそのまま動きます。オンになるのはそのシェルの中だけで、閉じれば元に戻ります。
 エージェントがコマンドを打つシェルは対話用の設定を読まないので、魔法陣が出るのは人間が打ったときだけです。
 
 `ls` や `cd` のように何度も打つコマンドには出しません。飛ばすのは、パイプや `&&` の無い 1 つだけのコマンドで、
-先頭が次のどれかのときです。`cd src && make` なら出ます。設定ファイル（`maho --setup` で場所が出ます）の
+先頭が次のどれかのときです。`cd src && make` なら出ます。設定ファイル（`mahojin --setup` で場所が出ます）の
 `chant_skip` で入れ替えられ、`[]` にすればすべてのコマンドに出ます。
 
 ```toml
-chant_skip = ["cd", "ls", "ll", "la", "pwd", "exit", "history"]   # 既定
+chant_skip = ["cd", "ls", "ll", "la", "pwd", "exit", "history"]    # 既定
 ```
 
 bash には zsh や fish のような実行直前のフックが無いので、DEBUG トラップで作っています。
@@ -115,7 +122,7 @@ bash には zsh や fish のような実行直前のフックが無いので、D
 ### 失敗した呪文
 
 唱えたコマンドが失敗すると（終了コード 1〜127）、魔法陣が砕けます。ひびが走り、破片がばらけて落ちるまで、
-およそ 1 秒です。`maho <コマンド>` でも詠唱モードでも同じです。Ctrl-C などシグナルで止めたときは砕けません。
+およそ 1 秒です。`mahojin <コマンド>` でも詠唱モードでも同じです。Ctrl-C などシグナルで止めたときは砕けません。
 砕けても、終了コードはコマンドのものがそのまま返ります。
 
 砕けるのをやめたいときは、設定ファイルに書きます。
@@ -127,10 +134,10 @@ shatter = false
 ### 魔法陣を見せびらかす
 
 ```console
-$ maho --share git status | pbcopy
+$ mahojin --share git status | pbcopy
 ```
 
-コマンドは実行しません。投稿文を stdout に、1200px の画像（`maho-<ハッシュ先頭8桁>.png`）を
+コマンドは実行しません。投稿文を stdout に、1200px の画像（`mahojin-<ハッシュ先頭8桁>.png`）を
 今のディレクトリに書き出し、投稿文が入った X の投稿画面の URL を stderr に出します。画像は手で添えてください。
 
 ```text
@@ -139,8 +146,8 @@ $ maho --share git status | pbcopy
 突破の陣 / 車輪 / 星形 / 3 回対称
 呪紋 e62b04aa
 
-#maho
-https://github.com/yukihirop/maho
+#mahojin
+https://github.com/yukihirop/mahojin
 ```
 
 ### 表示の言語
@@ -148,13 +155,13 @@ https://github.com/yukihirop/maho
 メッセージ・図形の名前・投稿文は、日本語と英語を切り替えられます。
 
 ```sh
-maho --setup --locale ja   # 日本語を保存する
-maho --setup               # 今の言語と、それがどこから決まったかを表示する
-maho --locale en ls        # 今回だけ英語
+mahojin --setup --locale ja    # 日本語を保存する
+mahojin --setup                # 今の言語と、それがどこから決まったかを表示する
+mahojin --locale en ls         # 今回だけ英語
 ```
 
-決まる順番は `--locale` > `MAHO_LOCALE` > 設定ファイル
-（`$XDG_CONFIG_HOME/maho/config.toml`、無ければ `~/.config/maho/config.toml`）> `LC_ALL` / `LC_MESSAGES` / `LANG`
+決まる順番は `--locale` > `MAHOJIN_LOCALE` > 設定ファイル
+（`$XDG_CONFIG_HOME/mahojin/config.toml`、無ければ `~/.config/mahojin/config.toml`）> `LC_ALL` / `LC_MESSAGES` / `LANG`
 （`ja` で始まれば日本語）> 英語 です。
 
 ## 魔法の格
@@ -176,7 +183,7 @@ maho --locale en ls        # 今回だけ英語
 
 ## 図鑑
 
-唱えた魔法陣は図鑑に記録されます。`maho --grimoire` で、格・中心図形・陣形・装飾・対称・書体・外周の帯の
+唱えた魔法陣は図鑑に記録されます。`mahojin --grimoire` で、格・中心図形・陣形・装飾・対称・書体・外周の帯の
 全 38 種のうち、どこまで集めたかを見られます。まだ出会っていないものは `？？？` で伏せてあります。
 
 ```
@@ -199,7 +206,7 @@ maho --locale en ls        # 今回だけ英語
 骨格を揃えるには、別々のコマンドをおよそ 1 万 5 千個唱える計算です。コンプリートは事実上不可能なので、
 気長にどうぞ。引数も呪文のうちなので、`git commit -m "..."` はコミットのたびに新しい呪文になります。
 
-図鑑は `$XDG_DATA_HOME/maho/grimoire`（無ければ `~/.local/share/maho/grimoire`）にあります。
+図鑑は `$XDG_DATA_HOME/mahojin/grimoire`（無ければ `~/.local/share/mahojin/grimoire`）にあります。
 残すのはコマンドのハッシュと唱えた回数、表に無い格だったかどうかの印、それに隠れた欄のどれに出会ったかだけで、
 コマンドそのものや唱えた日時は書きません。
 
@@ -214,7 +221,7 @@ maho --locale en ls        # 今回だけ英語
 5. SVG を組み立て、[resvg](https://github.com/linebender/resvg) で PNG にして端末へ送る。
    外側の帯から内側へ、順に描き上がっていくコマを 16 枚流す
 
-どんな種類があるかは、唱えてからのお楽しみです。出会ったものは `maho --grimoire` の図鑑で確かめられます。
+どんな種類があるかは、唱えてからのお楽しみです。出会ったものは `mahojin --grimoire` の図鑑で確かめられます。
 
 ただし、特別な日や時刻に唱えると、形はそのままで色が変わることがあります。どの日なのかは書きません。
 
@@ -241,18 +248,18 @@ tmux のスクロールや描き直しについてきます。iTerm2 にはそ�
 
 | 環境変数 | 意味 |
 | --- | --- |
-| `MAHO_GRAPHICS=kitty\|iterm\|none` | 自動判定をやめて方式を固定する |
-| `MAHO_ANIMATION=off` | アニメーションをやめ、完成図（砕けるときは砕けた姿）を 1 枚だけ出す |
-| `MAHO_LOCALE=ja\|en` | 設定ファイルより優先して、この言語で表示する |
-| `MAHO_GRIMOIRE=off` | 唱えた魔法陣を図鑑に記録しない |
+| `MAHOJIN_GRAPHICS=kitty\|iterm\|none` | 自動判定をやめて方式を固定する |
+| `MAHOJIN_ANIMATION=off` | アニメーションをやめ、完成図（砕けるときは砕けた姿）を 1 枚だけ出す |
+| `MAHOJIN_LOCALE=ja\|en` | 設定ファイルより優先して、この言語で表示する |
+| `MAHOJIN_GRIMOIRE=off` | 唱えた魔法陣を図鑑に記録しない |
 
 ## README の画像を作り直す
 
-`assets/` の GIF とギャラリーは、`maho` が実際に端末へ送った画像を抜き出して、
+`assets/` の GIF とギャラリーは、`mahojin` が実際に端末へ送った画像を抜き出して、
 ターミナルの枠とコマンドの出力を描き足したものです（コマンド自体は偽物に差し替えて走らせません）。
 
 ```sh
-python3 scripts/demo.py   # cargo, ImageMagick, script(1) が要る
+python3 scripts/demo.py    # cargo, ImageMagick, script(1) が要る
 ```
 
 ## ライセンス

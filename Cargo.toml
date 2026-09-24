@@ -1,10 +1,10 @@
 [package]
-name = "maho"
+name = "mahojin"
 version = "0.1.0"
 edition = "2024"
 description = "Cast your everyday commands as spells: a magic circle unfolds in your terminal before each one runs"
 license = "MIT"
-repository = "https://github.com/yukihirop/maho"
+repository = "https://github.com/yukihirop/mahojin"
 readme = "README.md"
 keywords = ["cli", "terminal", "magic-circle", "kitty", "iterm2"]
 categories = ["command-line-utilities"]

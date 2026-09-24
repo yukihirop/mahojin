@@ -1,6 +1,6 @@
 //! 表示する言語。
 //!
-//! 決める順番: `--locale` > `MAHO_LOCALE` > 設定ファイル > `LC_ALL` / `LC_MESSAGES` / `LANG` > 英語。
+//! 決める順番: `--locale` > `MAHOJIN_LOCALE` > 設定ファイル > `LC_ALL` / `LC_MESSAGES` / `LANG` > 英語。
 //! 設定ファイルの読み書きは `config` にある。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ impl Locale {
     }
 }
 
-/// 言語がどこから決まったか。`maho --setup` で見せる。
+/// 言語がどこから決まったか。`mahojin --setup` で見せる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     Flag,
@@ -46,7 +46,7 @@ pub enum Source {
 
 /// `--locale` を除いた決め方。`--locale` は呼び出し側で先に見る。
 pub fn detect(env: impl Fn(&str) -> Option<String>, config: Option<Locale>) -> (Locale, Source) {
-    if let Some(l) = env("MAHO_LOCALE").as_deref().and_then(Locale::parse) {
+    if let Some(l) = env("MAHOJIN_LOCALE").as_deref().and_then(Locale::parse) {
         return (l, Source::Env);
     }
     if let Some(l) = config {
@@ -79,7 +79,10 @@ mod tests {
     fn detection_order() {
         let ja = Some(Locale::Ja);
         assert_eq!(
-            detect(env(&[("MAHO_LOCALE", "en"), ("LANG", "ja_JP.UTF-8")]), ja),
+            detect(
+                env(&[("MAHOJIN_LOCALE", "en"), ("LANG", "ja_JP.UTF-8")]),
+                ja
+            ),
             (Locale::En, Source::Env)
         );
         assert_eq!(
@@ -95,9 +98,9 @@ mod tests {
             (Locale::En, Source::System)
         );
         assert_eq!(detect(env(&[]), None), (Locale::En, Source::Default));
-        // 知らない値の MAHO_LOCALE は無視して次を見る
+        // 知らない値の MAHOJIN_LOCALE は無視して次を見る
         assert_eq!(
-            detect(env(&[("MAHO_LOCALE", "fr")]), ja),
+            detect(env(&[("MAHOJIN_LOCALE", "fr")]), ja),
             (Locale::Ja, Source::Config)
         );
     }

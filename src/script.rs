@@ -13,7 +13,7 @@ use rand_core::{Rng, SeedableRng};
 use crate::locale::Locale;
 
 /// 字母の種。変えると全部の魔法陣の文字が変わる。
-const ALPHABET_SEED: [u8; 32] = *b"maho: the script of every spell.";
+const ALPHABET_SEED: [u8; 32] = *b"mahojin: the runes of all spells";
 
 /// 書体。書体ごとに別の字母を持つ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -318,22 +318,15 @@ mod tests {
         }
     }
 
-    /// 刻文字は最初の版の字形を保つ
+    /// 刻文字の字形を固定する。変われば全部の魔法陣の文字が変わる
     #[test]
-    fn runic_keeps_the_original_glyphs() {
-        // 値は書体を足す前の実装が出したもの
-        let original = [
-            (b'g', "M-6.0 -10.0L6.0 -10.0M-6.0 -10.0Q0.0 0.0 6.0 0.0"),
-            (
-                b's',
-                "M6.0 0.0Q0.0 0.0 6.0 10.0M6.0 -10.0L-6.0 10.0M-6.0 10.0L6.0 0.0",
-            ),
-            (
-                b't',
-                "M6.0 0.0L-6.0 0.0M-6.0 -10.0L-6.0 0.0M-6.0 -10.0Q0.0 0.0 -6.0 0.0",
-            ),
+    fn runic_keeps_its_glyphs() {
+        let pinned = [
+            (b'g', "M6.0 0.0L-6.0 10.0M6.0 -10.0L-6.0 0.0"),
+            (b's', "M6.0 -10.0Q0.0 0.0 6.0 0.0M-6.0 10.0l0.1 0"),
+            (b't', "M6.0 0.0Q0.0 0.0 -6.0 0.0M-6.0 10.0Q0.0 0.0 -6.0 0.0"),
         ];
-        for (b, d) in original {
+        for (b, d) in pinned {
             assert_eq!(glyph_d(Style::Runic, b, 6.0, 10.0), d);
         }
     }

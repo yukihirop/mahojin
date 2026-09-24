@@ -1,6 +1,6 @@
 //! 図鑑。唱えた魔法陣を記録し、格や中心図形をどこまで集めたかを数える。
 //!
-//! 置き場所は `$XDG_DATA_HOME/maho/grimoire`（無ければ `~/.local/share/maho/grimoire`）。
+//! 置き場所は `$XDG_DATA_HOME/mahojin/grimoire`（無ければ `~/.local/share/mahojin/grimoire`）。
 //! コマンドは書かず、ハッシュと唱えた回数だけを 1 行ずつ残す。
 //! パラメータはハッシュから引き直せるので、それで足りる（[`MagicCircle::from_hash`]）。
 //! 禁呪かどうかだけはハッシュから分からないので、3 つめの欄に印を書く（`forbidden` か `doom:balse` など）。
@@ -15,7 +15,7 @@ use crate::locale::Locale;
 use crate::omen::Omen;
 use crate::script::Style;
 
-const HEADER: &str = "# maho grimoire v2";
+const HEADER: &str = "# mahojin grimoire v2";
 
 /// 集める項目。図鑑の 1 マス。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -331,15 +331,15 @@ pub fn path(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
         Some(dir) => PathBuf::from(dir),
         None => PathBuf::from(env("HOME")?).join(".local").join("share"),
     };
-    Some(base.join("maho").join("grimoire"))
+    Some(base.join("mahojin").join("grimoire"))
 }
 
-/// `MAHO_GRIMOIRE=off` なら記録しない。
+/// `MAHOJIN_GRIMOIRE=off` なら記録しない。
 pub fn enabled(env: impl Fn(&str) -> Option<String>) -> bool {
-    env("MAHO_GRIMOIRE").as_deref() != Some("off")
+    env("MAHOJIN_GRIMOIRE").as_deref() != Some("off")
 }
 
-/// `maho --grimoire` で見せる頁。
+/// `mahojin --grimoire` で見せる頁。
 pub fn show(g: &Grimoire, l: Locale) -> String {
     let found = g.items();
     let pages = pages();
@@ -612,7 +612,7 @@ mod tests {
         // 印が無かった頃の図鑑（v1）もそのまま読め、禁呪を唱え直すと印が付く
         let c = MagicCircle::from_command("バルス");
         let hex = c.hash_hex();
-        let mut g = Grimoire::parse(&format!("# maho grimoire v1\n{hex} 3\n"));
+        let mut g = Grimoire::parse(&format!("# mahojin grimoire v1\n{hex} 3\n"));
         let mut balse = c.clone();
         balse.forbid();
         let new = g.record(&balse, Some(Doom::Balse));
@@ -637,13 +637,13 @@ mod tests {
         };
         assert_eq!(
             path(env(&[("XDG_DATA_HOME", "/d"), ("HOME", "/h")])),
-            Some(PathBuf::from("/d/maho/grimoire"))
+            Some(PathBuf::from("/d/mahojin/grimoire"))
         );
         assert_eq!(
             path(env(&[("HOME", "/h")])),
-            Some(PathBuf::from("/h/.local/share/maho/grimoire"))
+            Some(PathBuf::from("/h/.local/share/mahojin/grimoire"))
         );
-        assert!(!enabled(env(&[("MAHO_GRIMOIRE", "off")])));
+        assert!(!enabled(env(&[("MAHOJIN_GRIMOIRE", "off")])));
         assert!(enabled(env(&[])));
     }
 }

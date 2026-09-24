@@ -1,7 +1,7 @@
-//! `maho init <shell>`: `maho on` で、打ったコマンドすべてに魔法陣を出す詠唱モード。
+//! `mahojin init <shell>`: `mahojin on` で、打ったコマンドすべてに魔法陣を出す詠唱モード。
 //!
-//! 子プロセスの maho は親のシェルを変えられないので、シェル側に関数とフックを読み込んでもらう。
-//! コマンドの前に `maho` を足すのではなく、実行直前（preexec）に魔法陣だけ描いて、
+//! 子プロセスの mahojin は親のシェルを変えられないので、シェル側に関数とフックを読み込んでもらう。
+//! コマンドの前に `mahojin` を足すのではなく、実行直前（preexec）に魔法陣だけ描いて、
 //! 実行はシェルに任せる。`cd` もエイリアスもパイプもそのまま動く。
 
 use crate::locale::Locale;
@@ -50,13 +50,13 @@ pub fn init(shell: &str, l: Locale) -> Option<String> {
         _ => return None,
     };
     let on = l.pick(
-        "✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（maho off で戻る）",
-        "✦ Chanting: the commands you type unfold circles (maho off to stop)",
+        "✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（mahojin off で戻る）",
+        "✦ Chanting: the commands you type unfold circles (mahojin off to stop)",
     );
     let off = l.pick("✦ 詠唱モードを解きました", "✦ Chanting stopped");
     let taken = l.pick(
-        "maho: DEBUG トラップが使用中なので詠唱モードを入れられません。bash-preexec を先に読み込むと使えます",
-        "maho: the DEBUG trap is already in use, so chanting mode can't hook in; load bash-preexec first",
+        "mahojin: DEBUG トラップが使用中なので詠唱モードを入れられません。bash-preexec を先に読み込むと使えます",
+        "mahojin: the DEBUG trap is already in use, so chanting mode can't hook in; load bash-preexec first",
     );
     // 知らせは一重引用符の中に埋め込むので、中の ' を逃がす
     let quote = |msg: &str| match shell {
@@ -71,88 +71,101 @@ pub fn init(shell: &str, l: Locale) -> Option<String> {
     )
 }
 
-const ZSH: &str = r#"# maho: eval "$(maho init zsh)"
-maho() {
+const ZSH: &str = r#"# mahojin: eval "$(mahojin init zsh)"
+mahojin() {
   if (( $# == 1 )) && [[ $1 == on ]]; then
-    typeset -g _MAHO_CHANTING=1
+    typeset -g _MAHOJIN_CHANTING=1
     print -u2 -r -- '{on}'
   elif (( $# == 1 )) && [[ $1 == off ]]; then
-    unset _MAHO_CHANTING
+    unset _MAHOJIN_CHANTING
     print -u2 -r -- '{off}'
   else
-    command maho "$@"
+    command mahojin "$@"
   fi
 }
 
-_maho_preexec() {
-  [[ -n $_MAHO_CHANTING ]] || return 0
-  # maho を自分で唱えた行には重ねない
+_mahojin_preexec() {
+  [[ -n $_MAHOJIN_CHANTING ]] || return 0
+  # mahojin を自分で唱えた行には重ねない
   local -a words=(${(z)1})
-  [[ $words[1] == maho || $words[1] == command && $words[2] == maho ]] && return 0
-  typeset -g _maho_last=$1
-  command maho --chant -- "$1"
+  # `alias m=mahojin` のようなエイリアスも、たどって mahojin かどうかを見る
+  local first=$words[1]
+  if [[ -n ${aliases[$first]} ]]; then
+    local -a expanded=(${(z)aliases[$first]})
+    first=$expanded[1]
+  fi
+  [[ $first == mahojin || $words[1] == command && $words[2] == mahojin ]] && return 0
+  typeset -g _mahojin_last=$1
+  command mahojin --chant -- "$1"
 }
 
 # 唱えた呪文が失敗したら、魔法陣が砕ける
-_maho_precmd() {
-  local st=$? line=$_maho_last
-  _maho_last=
-  [[ -n $line && $st -ne 0 && -n $_MAHO_CHANTING ]] && command maho --shatter $st -- "$line"
+_mahojin_precmd() {
+  local st=$? line=$_mahojin_last
+  _mahojin_last=
+  [[ -n $line && $st -ne 0 && -n $_MAHOJIN_CHANTING ]] && command mahojin --shatter $st -- "$line"
   return $st
 }
 
 autoload -Uz add-zsh-hook
-add-zsh-hook preexec _maho_preexec
-add-zsh-hook precmd _maho_precmd
+add-zsh-hook preexec _mahojin_preexec
+add-zsh-hook precmd _mahojin_precmd
 "#;
 
 /// bash には preexec が無い。bash-preexec があればそれに乗り、無ければ DEBUG トラップで作る。
 /// DEBUG トラップはパイプの各コマンドやプロンプトのフックでも発火するので、
 /// 「プロンプトを出してから最初の、プロンプトのフックでないコマンド」でだけ動かす。
-const BASH: &str = r#"# maho: eval "$(maho init bash)"
-maho() {
+const BASH: &str = r#"# mahojin: eval "$(mahojin init bash)"
+mahojin() {
   if [[ $# -eq 1 && $1 == on ]]; then
-    _MAHO_CHANTING=1
+    _MAHOJIN_CHANTING=1
     printf '%s\n' '{on}' >&2
   elif [[ $# -eq 1 && $1 == off ]]; then
-    unset _MAHO_CHANTING
+    unset _MAHOJIN_CHANTING
     printf '%s\n' '{off}' >&2
   else
-    command maho "$@"
+    command mahojin "$@"
   fi
 }
 
-_maho_cast() {
-  [[ -n $_MAHO_CHANTING ]] || return 0
+_mahojin_cast() {
+  [[ -n $_MAHOJIN_CHANTING ]] || return 0
   local -a words
   IFS=$' \t\n' read -r -a words <<< "$1"
-  [[ ${words[0]} == maho || ( ${words[0]} == command && ${words[1]} == maho ) ]] && return 0
-  _maho_last=$1
-  command maho --chant -- "$1"
+  # `alias m=mahojin` のようなエイリアスも、たどって mahojin かどうかを見る（alias は m='mahojin' の形で出る）
+  local first=${words[0]} a
+  if a=$(builtin alias -- "$first" 2>/dev/null); then
+    a=${a#*=}
+    a=${a#\'}
+    first=${a%%[ \']*}
+  fi
+  [[ $first == mahojin || ( ${words[0]} == command && ${words[1]} == mahojin ) ]] && return 0
+  _mahojin_last=$1
+  command mahojin --chant -- "$1"
 }
 
 # 唱えた呪文が失敗したら、魔法陣が砕ける。$1 は呪文の終了コード
-_maho_after() {
-  local line=$_maho_last
-  _maho_last=
-  [[ -n $line && $1 -ne 0 && -n $_MAHO_CHANTING ]] && command maho --shatter "$1" -- "$line"
+_mahojin_after() {
+  local line=$_mahojin_last
+  _mahojin_last=
+  [[ -n $line && $1 -ne 0 && -n $_MAHOJIN_CHANTING ]] && command mahojin --shatter "$1" -- "$line"
   return 0
 }
 
 if [[ -n ${bash_preexec_imported:-} || -n ${__bp_imported:-} ]]; then
-  preexec_functions+=(_maho_cast)
-  _maho_precmd() { _maho_after $?; }
-  precmd_functions+=(_maho_precmd)
+  preexec_functions+=(_mahojin_cast)
+  _mahojin_precmd() { _mahojin_after $?; }
+  precmd_functions+=(_mahojin_precmd)
 elif [[ -n $(trap -p DEBUG) ]]; then
   printf '%s\n' '{taken}' >&2
 else
-  _maho_at_prompt=1
+  _mahojin_at_prompt=1
   # 呪文の終了コードは、ほかのプロンプトのフックに上書きされる前に取っておく。$? はそのまま返す
-  _maho_status() { _maho_st=$?; return $_maho_st; }
-  _maho_prompt() { _maho_after "$_maho_st"; _maho_at_prompt=1; return $_maho_st; }
+  _mahojin_status() { _mahojin_st=$?; return $_mahojin_st; }
+  _mahojin_prompt() { _mahojin_after "$_mahojin_st"; _mahojin_at_prompt=1; return $_mahojin_st; }
 
-  _maho_debug() {
-    [[ -n $_maho_at_prompt && -z ${COMP_LINE:-} ]] || return 0
+  _mahojin_debug() {
+    [[ -n $_mahojin_at_prompt && -z ${COMP_LINE:-} ]] || return 0
     # プロンプトのフック自身（何も打たずに Enter したときもここに来る）
     local hook part
     local -a parts
@@ -164,52 +177,56 @@ else
         [[ $BASH_COMMAND == "$part" ]] && return 0
       done
     done
-    _maho_at_prompt=
+    _mahojin_at_prompt=
     local entry line=$BASH_COMMAND
     entry=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null)
     [[ $entry =~ ^[[:space:]]*[0-9]+[*]?[[:space:]]+(.*)$ ]] && line=${BASH_REMATCH[1]}
-    _maho_cast "$line"
+    _mahojin_cast "$line"
   }
 
-  PROMPT_COMMAND="_maho_status; ${PROMPT_COMMAND:+$PROMPT_COMMAND; }_maho_prompt"
-  trap '_maho_debug' DEBUG
+  PROMPT_COMMAND="_mahojin_status; ${PROMPT_COMMAND:+$PROMPT_COMMAND; }_mahojin_prompt"
+  trap '_mahojin_debug' DEBUG
 fi
 "#;
 
-const FISH: &str = r#"# maho: maho init fish | source
-function maho
+const FISH: &str = r#"# mahojin: mahojin init fish | source
+function mahojin
     if test (count $argv) -eq 1; and test "$argv[1]" = on
-        set -g _maho_chanting 1
+        set -g _mahojin_chanting 1
         echo '{on}' >&2
     else if test (count $argv) -eq 1; and test "$argv[1]" = off
-        set -e _maho_chanting
+        set -e _mahojin_chanting
         echo '{off}' >&2
     else
-        command maho $argv
+        command mahojin $argv
     end
 end
 
-function _maho_preexec --on-event fish_preexec
-    set -q _maho_chanting; or return 0
+function _mahojin_preexec --on-event fish_preexec
+    set -q _mahojin_chanting; or return 0
     set -l words (string split -n ' ' -- $argv[1])
-    if test "$words[1]" = maho
+    # `alias m mahojin` で作った関数も、たどって mahojin かどうかを見る
+    if functions -q -- "$words[1]"; and functions -- "$words[1]" | string match -q -r -- "--wraps[= ]'?mahojin\b"
         return 0
     end
-    if test "$words[1]" = command; and test "$words[2]" = maho
+    if test "$words[1]" = mahojin
         return 0
     end
-    set -g _maho_last $argv[1]
-    command maho --chant -- $argv[1]
+    if test "$words[1]" = command; and test "$words[2]" = mahojin
+        return 0
+    end
+    set -g _mahojin_last $argv[1]
+    command mahojin --chant -- $argv[1]
 end
 
 # 唱えた呪文が失敗したら、魔法陣が砕ける
-function _maho_postexec --on-event fish_postexec
+function _mahojin_postexec --on-event fish_postexec
     set -l st $status
-    set -q _maho_last; or return 0
-    set -l line $_maho_last
-    set -e _maho_last
-    if test $st -ne 0; and set -q _maho_chanting
-        command maho --shatter $st -- $line
+    set -q _mahojin_last; or return 0
+    set -l line $_mahojin_last
+    set -e _mahojin_last
+    if test $st -ne 0; and set -q _mahojin_chanting
+        command mahojin --shatter $st -- $line
     end
 end
 "#;
@@ -271,7 +288,7 @@ mod tests {
     }
 
     /// そのシェルが入っていれば、構文だけ確かめる。
-    /// 手元に zsh や fish が無くても通るようにしてあるが、CI では `MAHO_TEST_SHELLS=1` で必須にする。
+    /// 手元に zsh や fish が無くても通るようにしてあるが、CI では `MAHOJIN_TEST_SHELLS=1` で必須にする。
     fn parses_in(shell: &str, check: &[&str]) {
         use std::io::Write;
         let Ok(mut child) = std::process::Command::new(shell)
@@ -280,7 +297,7 @@ mod tests {
             .spawn()
         else {
             assert!(
-                std::env::var_os("MAHO_TEST_SHELLS").is_none(),
+                std::env::var_os("MAHOJIN_TEST_SHELLS").is_none(),
                 "{shell} is not installed"
             );
             return;

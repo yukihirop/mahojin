@@ -58,12 +58,12 @@ fn usage(l: Locale) -> String {
         ("--help, -h", "この説明を表示する", "Show this help"),
     ];
     let mut s = String::from(
-        "usage: maho [options] <command> [args...]
-       maho [options] \"<shell command>\"
-       maho --setup [--locale <ja|en>]
-       maho --grimoire
-       maho init <zsh|bash|fish>
-       maho on | off
+        "usage: mahojin [options] <command> [args...]
+       mahojin [options] \"<shell command>\"
+       mahojin --setup [--locale <ja|en>]
+       mahojin --grimoire
+       mahojin init <zsh|bash|fish>
+       mahojin on | off
 ",
     );
     for (flag, ja, en) in lines {
@@ -143,7 +143,7 @@ impl ArgError {
     }
 }
 
-/// maho 自身のオプションはコマンドより前だけに置ける。
+/// mahojin 自身のオプションはコマンドより前だけに置ける。
 /// 最初のオプションでない引数（または `--` の次）から後ろは、すべてコマンドに渡す。
 /// 誤りがあっても、そこまでに読んだ `--locale` はエラーの表示に使うので `opts` に残す。
 fn parse_args(
@@ -220,17 +220,17 @@ fn main() -> ExitCode {
     if let (Some(e), Some(path)) = (&config_error, &config_path) {
         match l {
             Locale::Ja => eprintln!(
-                "maho: 設定ファイルを読めないので、既定の設定で続けます: {}\n{e}",
+                "mahojin: 設定ファイルを読めないので、既定の設定で続けます: {}\n{e}",
                 path.display()
             ),
             Locale::En => eprintln!(
-                "maho: can't read the config file, using the defaults: {}\n{e}",
+                "mahojin: can't read the config file, using the defaults: {}\n{e}",
                 path.display()
             ),
         }
     }
     if let Err(e) = parsed {
-        eprintln!("maho: {}\n{}", e.message(l), usage(l));
+        eprintln!("mahojin: {}\n{}", e.message(l), usage(l));
         return ExitCode::from(2);
     }
     if opts.help {
@@ -250,10 +250,10 @@ fn main() -> ExitCode {
         // シェルの関数が読み込まれていれば、ここへは来ない
         ["on"] | ["off"] => {
             eprintln!(
-                "maho: {}",
+                "mahojin: {}",
                 l.pick(
-                    "maho on / off には、シェルの設定に maho init を書いてシェルを開き直してください（README の「詠唱モード」）",
-                    "maho on / off needs maho init in your shell config; then open a new shell (see \"Chanting mode\" in the README)",
+                    "mahojin on / off には、シェルの設定に mahojin init を書いてシェルを開き直してください（README の「詠唱モード」）",
+                    "mahojin on / off needs mahojin init in your shell config; then open a new shell (see \"Chanting mode\" in the README)",
                 )
             );
             return ExitCode::from(2);
@@ -289,8 +289,8 @@ fn main() -> ExitCode {
         Ok(drawn) => drawn,
         Err(e) => {
             match l {
-                Locale::Ja => eprintln!("maho: 魔法陣を描けません: {e}"),
-                Locale::En => eprintln!("maho: can't draw the magic circle: {e}"),
+                Locale::Ja => eprintln!("mahojin: 魔法陣を描けません: {e}"),
+                Locale::En => eprintln!("mahojin: can't draw the magic circle: {e}"),
             }
             false
         }
@@ -311,8 +311,8 @@ fn main() -> ExitCode {
     if let Some(path) = &opts.svg_path {
         if let Err(e) = std::fs::write(path, render::svg(&circle, &spell)) {
             match l {
-                Locale::Ja => eprintln!("maho: 魔法陣を書き出せません: {path}: {e}"),
-                Locale::En => eprintln!("maho: can't write the magic circle: {path}: {e}"),
+                Locale::Ja => eprintln!("mahojin: 魔法陣を書き出せません: {path}: {e}"),
+                Locale::En => eprintln!("mahojin: can't write the magic circle: {path}: {e}"),
             }
             return ExitCode::from(1);
         }
@@ -328,7 +328,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    // 引数 1 つで空白を含むなら `maho "cargo build && ls"` の形とみなしてシェルに渡す。
+    // 引数 1 つで空白を含むなら `mahojin "cargo build && ls"` の形とみなしてシェルに渡す。
     let mut cmd = if args.len() == 1 && args[0].contains(char::is_whitespace) {
         let mut c = Command::new("sh");
         c.arg("-c").arg(&args[0]);
@@ -350,8 +350,8 @@ fn main() -> ExitCode {
         }
         Err(e) => {
             match l {
-                Locale::Ja => eprintln!("maho: 詠唱失敗: {}: {e}", args[0]),
-                Locale::En => eprintln!("maho: the spell failed: {}: {e}", args[0]),
+                Locale::Ja => eprintln!("mahojin: 詠唱失敗: {}: {e}", args[0]),
+                Locale::En => eprintln!("mahojin: the spell failed: {}: {e}", args[0]),
             }
             ExitCode::from(if e.kind() == std::io::ErrorKind::NotFound {
                 127
@@ -379,7 +379,7 @@ fn shatters(code: i32, config: &config::Config) -> bool {
 fn break_circle(c: &MagicCircle, spell: &str, code: i32, l: Locale) {
     // 砕く前の魔法陣を一度だけ絵にして、それを破片に切り分ける
     let frames: Vec<String> = match terminal::rasterize(&render::frame(c, spell, 1.0), 512) {
-        Ok(picture) if std::env::var("MAHO_ANIMATION").as_deref() == Ok("off") => {
+        Ok(picture) if std::env::var("MAHOJIN_ANIMATION").as_deref() == Ok("off") => {
             vec![render::shatter(c, &picture, 1.0)]
         }
         Ok(picture) => (1..=SHATTER_FRAMES)
@@ -400,9 +400,9 @@ fn break_circle(c: &MagicCircle, spell: &str, code: i32, l: Locale) {
     }
 }
 
-/// `MAHO_ANIMATION=off` なら完成図 1 枚だけにする。
+/// `MAHOJIN_ANIMATION=off` なら完成図 1 枚だけにする。
 fn animation(c: &MagicCircle, spell: &str) -> Vec<String> {
-    if std::env::var("MAHO_ANIMATION").as_deref() == Ok("off") {
+    if std::env::var("MAHOJIN_ANIMATION").as_deref() == Ok("off") {
         return vec![render::frame(c, spell, 1.0)];
     }
     (1..=FRAMES)
@@ -411,14 +411,14 @@ fn animation(c: &MagicCircle, spell: &str) -> Vec<String> {
 }
 
 /// 呪文を唱えずに、見せびらかす用の投稿文と画像だけを作る。
-/// 投稿文は stdout に出すので、`maho --share git status | pbcopy` でそのまま貼れる。
+/// 投稿文は stdout に出すので、`mahojin --share git status | pbcopy` でそのまま貼れる。
 fn share(c: &MagicCircle, spell: &str, l: Locale) -> ExitCode {
     let path = share::image_name(c);
     let png = terminal::rasterize(&render::frame(c, spell, 1.0), SHARE_PIXELS);
     if let Err(e) = png.and_then(|png| std::fs::write(&path, png).map_err(|e| e.to_string())) {
         match l {
-            Locale::Ja => eprintln!("maho: 魔法陣の画像を書き出せません: {path}: {e}"),
-            Locale::En => eprintln!("maho: can't write the magic circle image: {path}: {e}"),
+            Locale::Ja => eprintln!("mahojin: 魔法陣の画像を書き出せません: {path}: {e}"),
+            Locale::En => eprintln!("mahojin: can't write the magic circle image: {path}: {e}"),
         }
         return ExitCode::from(1);
     }
@@ -448,7 +448,7 @@ fn record(path: &std::path::Path, c: &MagicCircle, doom: Option<forbidden::Doom>
 fn open_grimoire(path: Option<PathBuf>, l: Locale) -> ExitCode {
     let Some(path) = path else {
         eprintln!(
-            "maho: {}",
+            "mahojin: {}",
             l.pick(
                 "HOME が無いので図鑑の場所が決まりません",
                 "can't find the grimoire: HOME is not set",
@@ -463,8 +463,10 @@ fn open_grimoire(path: Option<PathBuf>, l: Locale) -> ExitCode {
         }
         Err(e) => {
             match l {
-                Locale::Ja => eprintln!("maho: 図鑑を読めません: {}: {e}", path.display()),
-                Locale::En => eprintln!("maho: can't read the grimoire: {}: {e}", path.display()),
+                Locale::Ja => eprintln!("mahojin: 図鑑を読めません: {}: {e}", path.display()),
+                Locale::En => {
+                    eprintln!("mahojin: can't read the grimoire: {}: {e}", path.display())
+                }
             }
             ExitCode::from(1)
         }
@@ -475,8 +477,8 @@ fn init(shell: &str, l: Locale) -> ExitCode {
     let Some(script) = shell::init(shell, l) else {
         let known = shell::SHELLS.join(" / ");
         match l {
-            Locale::Ja => eprintln!("maho: {shell} にはまだ対応していません（{known}）"),
-            Locale::En => eprintln!("maho: {shell} isn't supported yet ({known})"),
+            Locale::Ja => eprintln!("mahojin: {shell} にはまだ対応していません（{known}）"),
+            Locale::En => eprintln!("mahojin: {shell} isn't supported yet ({known})"),
         }
         return ExitCode::from(2);
     };
@@ -493,7 +495,7 @@ fn setup(
 ) -> ExitCode {
     let Some(path) = path else {
         eprintln!(
-            "maho: {}",
+            "mahojin: {}",
             l.pick(
                 "HOME が無いので設定ファイルの場所が決まりません",
                 "can't find where to put the config file: HOME is not set",
@@ -504,7 +506,7 @@ fn setup(
     let Some(new) = new else {
         let from = match source {
             Source::Flag => "--locale",
-            Source::Env => "MAHO_LOCALE",
+            Source::Env => "MAHOJIN_LOCALE",
             Source::Config => l.pick("設定ファイル", "config file"),
             Source::System => l.pick("LANG などの環境変数", "LANG and friends"),
             Source::Default => l.pick("既定", "default"),
@@ -526,8 +528,8 @@ fn setup(
     };
     if let Err(e) = config::save_locale(&path, new) {
         match new {
-            Locale::Ja => eprintln!("maho: 設定を保存できません: {}: {e}", path.display()),
-            Locale::En => eprintln!("maho: can't save the config: {}: {e}", path.display()),
+            Locale::Ja => eprintln!("mahojin: 設定を保存できません: {}: {e}", path.display()),
+            Locale::En => eprintln!("mahojin: can't save the config: {}: {e}", path.display()),
         }
         return ExitCode::from(1);
     }
@@ -536,7 +538,7 @@ fn setup(
         Locale::En => println!("✦ Switched to English ({})", path.display()),
     }
     // 環境変数は設定ファイルより強いので、保存しても効かないことを知らせる
-    if let Some(env) = std::env::var("MAHO_LOCALE")
+    if let Some(env) = std::env::var("MAHOJIN_LOCALE")
         .ok()
         .as_deref()
         .and_then(Locale::parse)
@@ -545,8 +547,8 @@ fn setup(
         eprintln!(
             "  {}",
             new.pick(
-                "ただし MAHO_LOCALE が設定されているので、そちらが優先されます",
-                "note: MAHO_LOCALE is set and takes precedence",
+                "ただし MAHOJIN_LOCALE が設定されているので、そちらが優先されます",
+                "note: MAHOJIN_LOCALE is set and takes precedence",
             )
         );
     }

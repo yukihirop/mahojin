@@ -78,14 +78,14 @@ pub fn ask_tmux() -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim_end().to_string())
 }
 
-/// 環境変数から使えるプロトコルを決める。`MAHO_GRAPHICS` があればそれが勝つ。
+/// 環境変数から使えるプロトコルを決める。`MAHOJIN_GRAPHICS` があればそれが勝つ。
 /// tmux の中では `tmux` で問い合わせた結果（[`TMUX_FORMAT`] の値）から、外側の端末と
 /// 素通しの可否を見る。素通しが無効なら描かない。
 pub fn detect(
     env: impl Fn(&str) -> Option<String>,
     tmux: impl FnOnce() -> Option<String>,
 ) -> Target {
-    let forced = env("MAHO_GRAPHICS").map(|v| match v.as_str() {
+    let forced = env("MAHOJIN_GRAPHICS").map(|v| match v.as_str() {
         "kitty" => Protocol::Kitty,
         "iterm" => Protocol::Iterm,
         _ => Protocol::None,
@@ -378,7 +378,7 @@ mod tests {
         assert_eq!(plain(&[("TERM", "xterm-kitty")]), Protocol::Kitty);
         assert_eq!(plain(&[("TERM_PROGRAM", "Apple_Terminal")]), Protocol::None);
         assert_eq!(
-            plain(&[("TERM_PROGRAM", "ghostty"), ("MAHO_GRAPHICS", "none")]),
+            plain(&[("TERM_PROGRAM", "ghostty"), ("MAHOJIN_GRAPHICS", "none")]),
             Protocol::None
         );
     }
@@ -421,7 +421,7 @@ mod tests {
         assert_eq!(detect(env(IN_TMUX), || None).protocol, Protocol::None);
         // 強制すれば、素通しの設定を見ずに送る
         let mut vars = IN_TMUX.to_vec();
-        vars.push(("MAHO_GRAPHICS", "kitty"));
+        vars.push(("MAHOJIN_GRAPHICS", "kitty"));
         let t = detect(env(&vars), || answer("off", "", ""));
         assert_eq!(t.protocol, Protocol::Kitty);
         assert!(t.tmux.is_some());

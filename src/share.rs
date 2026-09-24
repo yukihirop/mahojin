@@ -5,7 +5,7 @@ use std::fmt::Write;
 use crate::circle::MagicCircle;
 use crate::locale::Locale;
 
-const REPO: &str = "https://github.com/yukihirop/maho";
+const REPO: &str = "https://github.com/yukihirop/mahojin";
 /// 投稿文に載せる呪文の長さの上限（文字数）。X は全角を 2 と数えて 280 まで。
 const MAX_SPELL: usize = 60;
 
@@ -36,7 +36,7 @@ pub fn post(c: &MagicCircle, spell: &str, l: Locale) -> String {
             c.symmetry
         ),
     };
-    format!("{body}\n\n#maho\n{REPO}")
+    format!("{body}\n\n#mahojin\n{REPO}")
 }
 
 /// 投稿文が入った状態の X の投稿画面の URL。画像は添えられないので手で付ける。
@@ -46,7 +46,7 @@ pub fn intent_url(text: &str) -> String {
 
 /// 添える画像のファイル名。同じ呪文なら同じ名前になる。
 pub fn image_name(c: &MagicCircle) -> String {
-    format!("maho-{}.png", &c.hash_hex()[..8])
+    format!("mahojin-{}.png", &c.hash_hex()[..8])
 }
 
 fn shorten(spell: &str) -> String {
@@ -85,7 +85,7 @@ mod tests {
         assert!(p.contains("突破の陣 / 車輪 / 星形 / 3 回対称"));
         assert!(p.contains("呪紋 e62b04aa"));
         assert!(p.ends_with(REPO));
-        assert_eq!(image_name(&c), "maho-e62b04aa.png");
+        assert_eq!(image_name(&c), "mahojin-e62b04aa.png");
 
         let p = post(&c, "git status", Locale::En);
         assert!(p.starts_with("I cast \"git status\" and "));

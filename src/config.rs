@@ -1,4 +1,4 @@
-//! 設定ファイル。`$XDG_CONFIG_HOME/maho/config.toml`（無ければ `~/.config/maho/config.toml`）。
+//! 設定ファイル。`$XDG_CONFIG_HOME/mahojin/config.toml`（無ければ `~/.config/mahojin/config.toml`）。
 //!
 //! ```toml
 //! locale = "ja"
@@ -6,7 +6,7 @@
 //! shatter = false
 //! ```
 //!
-//! 書き換えるのは `maho --setup --locale` の locale だけで、ほかの設定やコメントは残す。
+//! 書き換えるのは `mahojin --setup --locale` の locale だけで、ほかの設定やコメントは残す。
 
 use std::path::{Path, PathBuf};
 
@@ -28,7 +28,7 @@ pub fn path(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
         Some(dir) => PathBuf::from(dir),
         None => PathBuf::from(env("HOME")?).join(".config"),
     };
-    Some(base.join("maho").join("config.toml"))
+    Some(base.join("mahojin").join("config.toml"))
 }
 
 impl Config {
@@ -97,11 +97,11 @@ mod tests {
     fn path_follows_xdg() {
         assert_eq!(
             path(env(&[("XDG_CONFIG_HOME", "/x"), ("HOME", "/h")])),
-            Some(PathBuf::from("/x/maho/config.toml"))
+            Some(PathBuf::from("/x/mahojin/config.toml"))
         );
         assert_eq!(
             path(env(&[("HOME", "/h")])),
-            Some(PathBuf::from("/h/.config/maho/config.toml"))
+            Some(PathBuf::from("/h/.config/mahojin/config.toml"))
         );
         assert_eq!(path(env(&[])), None);
     }
@@ -132,8 +132,8 @@ mod tests {
 
     #[test]
     fn saving_the_locale_keeps_the_rest() {
-        let dir = std::env::temp_dir().join(format!("maho-config-{}", std::process::id()));
-        let path = dir.join("maho").join("config.toml");
+        let dir = std::env::temp_dir().join(format!("mahojin-config-{}", std::process::id()));
+        let path = dir.join("mahojin").join("config.toml");
         assert_eq!(Config::load(&path).unwrap(), Config::default());
         save_locale(&path, Locale::En).unwrap();
         assert_eq!(Config::load(&path).unwrap().locale, Some(Locale::En));
