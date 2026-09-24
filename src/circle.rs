@@ -14,16 +14,31 @@ pub enum Shape {
     Triangle,
     Hexagram,
     MultiCircle,
+    Pentagram,
+    Octagram,
+    NestedPolygons,
+    Spiral,
+    Petals,
+    Metatron,
 }
 
 impl Shape {
+    const ALL: [Shape; 10] = [
+        Shape::Circle,
+        Shape::Triangle,
+        Shape::Hexagram,
+        Shape::MultiCircle,
+        Shape::Pentagram,
+        Shape::Octagram,
+        Shape::NestedPolygons,
+        Shape::Spiral,
+        Shape::Petals,
+        Shape::Metatron,
+    ];
+
+    /// 0x00..=0xff を種類の数で等分し、先頭バイトが入った区間の図形にする。
     fn from_byte(b: u8) -> Self {
-        match b {
-            0x00..=0x3f => Shape::Circle,
-            0x40..=0x7f => Shape::Triangle,
-            0x80..=0xbf => Shape::Hexagram,
-            0xc0..=0xff => Shape::MultiCircle,
-        }
+        Self::ALL[b as usize * Self::ALL.len() / 256]
     }
 
     pub fn name(self) -> &'static str {
@@ -32,6 +47,35 @@ impl Shape {
             Shape::Triangle => "三角",
             Shape::Hexagram => "六芒星",
             Shape::MultiCircle => "多重円",
+            Shape::Pentagram => "五芒星",
+            Shape::Octagram => "八芒星",
+            Shape::NestedPolygons => "入れ子多角形",
+            Shape::Spiral => "螺旋",
+            Shape::Petals => "花弁",
+            Shape::Metatron => "メタトロン",
+        }
+    }
+}
+
+/// 中心図形の外側を囲む、`symmetry` 回対称の装飾。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ornament {
+    /// 頂点を飛ばして結ぶ星形と、頂点の小円
+    Star,
+    /// 円周上に並べて隣と接する円の鎖
+    Chain,
+    /// 中心から伸びる光条と、先端の菱形
+    Rays,
+}
+
+impl Ornament {
+    const ALL: [Ornament; 3] = [Ornament::Star, Ornament::Chain, Ornament::Rays];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Ornament::Star => "星形",
+            Ornament::Chain => "円鎖",
+            Ornament::Rays => "光条",
         }
     }
 }
@@ -42,11 +86,12 @@ const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
 pub struct MagicCircle {
     pub hash: [u8; 32],
     pub shape: Shape,
-    /// 同心円の数 (2..=7)
+    pub ornament: Ornament,
+    /// 同心円の数 (3..=7)。外周のルーン帯の 2 本を含むので、内側には 1〜5 本
     pub rings: u8,
     /// 回転対称の次数
     pub symmetry: u8,
-    /// 外周に並ぶルーン文字の数 (8..=32)
+    /// 外周に並ぶルーン文字の数 (12..=32)
     pub runes: u8,
     /// 初期回転角 [0, 360)
     pub rotation: f32,
@@ -68,9 +113,10 @@ impl MagicCircle {
         MagicCircle {
             hash,
             shape: Shape::from_byte(hash[0]),
-            rings: 2 + below(&mut rng, 6) as u8,
+            ornament: Ornament::ALL[below(&mut rng, Ornament::ALL.len() as u32) as usize],
+            rings: 3 + below(&mut rng, 5) as u8,
             symmetry: SYMMETRIES[below(&mut rng, SYMMETRIES.len() as u32) as usize],
-            runes: 8 + below(&mut rng, 25) as u8,
+            runes: 12 + below(&mut rng, 21) as u8,
             rotation: unit(&mut rng) * 360.0,
             particles: below(&mut rng, 501) as u16,
             hue: unit(&mut rng) * 360.0,
@@ -117,12 +163,28 @@ mod tests {
     fn values_stay_in_range() {
         for i in 0..1000 {
             let c = MagicCircle::from_command(&format!("cmd {i}"));
-            assert!((2..=7).contains(&c.rings));
+            assert!((3..=7).contains(&c.rings));
             assert!(SYMMETRIES.contains(&c.symmetry));
-            assert!((8..=32).contains(&c.runes));
+            assert!((12..=32).contains(&c.runes));
             assert!((0.0..360.0).contains(&c.rotation));
             assert!(c.particles <= 500);
             assert!((0.0..360.0).contains(&c.hue));
+        }
+    }
+
+    #[test]
+    fn every_shape_and_ornament_appears() {
+        let circles: Vec<_> = (0..2000)
+            .map(|i| MagicCircle::from_command(&format!("cmd {i}")))
+            .collect();
+        for shape in Shape::ALL {
+            assert!(circles.iter().any(|c| c.shape == shape), "{shape:?}");
+        }
+        for ornament in Ornament::ALL {
+            assert!(
+                circles.iter().any(|c| c.ornament == ornament),
+                "{ornament:?}"
+            );
         }
     }
 
@@ -135,6 +197,7 @@ mod tests {
         assert_eq!(
             (
                 c.shape,
+                c.ornament,
                 c.rings,
                 c.symmetry,
                 c.runes,
@@ -146,6 +209,6 @@ mod tests {
     }
 
     const GOLDEN_HASH: &str = "e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6";
-    const GOLDEN_PARAMS: (Shape, u8, u8, u8, u16, bool) =
-        (Shape::MultiCircle, 2, 5, 21, 118, false);
+    const GOLDEN_PARAMS: (Shape, Ornament, u8, u8, u8, u16, bool) =
+        (Shape::Petals, Ornament::Star, 5, 3, 27, 398, true);
 }

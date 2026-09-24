@@ -10,7 +10,7 @@ use std::fmt::Write;
 use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 
-use crate::circle::{MagicCircle, Shape, unit};
+use crate::circle::{MagicCircle, Ornament, Shape, unit};
 
 const SIZE: f32 = 1000.0;
 /// ルーン帯の外周と内周
@@ -148,7 +148,7 @@ fn draw(c: &MagicCircle, t: Option<f32>) -> String {
             -dir * 360.0,
             45,
         );
-        ornament(&mut s, c.symmetry, &sub);
+        ornament(&mut s, c.ornament, c.symmetry, &sub);
         s.push_str("</g>\n");
     }
 
@@ -276,6 +276,9 @@ fn runes(s: &mut String, rng: &mut ChaCha8Rng, count: u8, visible: u8) {
             theta.to_degrees()
         )
         .unwrap();
+        // 字と字の間に小さな点を打ち、字が少ないときでも帯が途切れて見えないようにする
+        let (dx, dy) = polar(mid, theta + TAU / (2 * count as u32) as f32);
+        writeln!(s, r#"<circle cx="{dx:.2}" cy="{dy:.2}" r="3.5"/>"#).unwrap();
     }
     s.push_str("</g>\n");
 }
@@ -299,53 +302,98 @@ fn inner_rings(s: &mut String, rings: u8, color: &str) {
     s.push_str("</g>\n");
 }
 
-/// `symmetry` 回対称の星形多角形と、その頂点に置く小円。
-fn ornament(s: &mut String, n: u8, color: &str) {
-    let n = n as usize;
-    // 隣の隣を結ぶ。n の約数で閉じても、全頂点から引くので形は崩れない。
-    let step = if n <= 4 {
-        1
-    } else {
-        n / 2 - n.is_multiple_of(2) as usize
-    };
+/// `symmetry` 回対称の装飾。
+fn ornament(s: &mut String, kind: Ornament, n: u8, color: &str) {
+    writeln!(s, r#"<g stroke="{color}" stroke-width="1.8">"#).unwrap();
     let pts: Vec<(f32, f32)> = (0..n)
         .map(|i| polar(ORNAMENT, TAU * i as f32 / n as f32))
         .collect();
-
-    writeln!(s, r#"<g stroke="{color}" stroke-width="1.8">"#).unwrap();
-    for i in 0..n {
-        let (a, b) = (pts[i], pts[(i + step) % n]);
-        writeln!(
-            s,
-            r#"<line x1="{:.2}" y1="{:.2}" x2="{:.2}" y2="{:.2}"/>"#,
-            a.0, a.1, b.0, b.1
-        )
-        .unwrap();
-    }
-    for &(x, y) in &pts {
-        writeln!(
-            s,
-            r#"<circle cx="{x:.2}" cy="{y:.2}" r="18" stroke-width="2"/>"#
-        )
-        .unwrap();
+    match kind {
+        Ornament::Star => {
+            if n <= 4 {
+                // 3 と 4 は飛ばして結べる頂点が無く、星にならない。
+                // 同じ多角形を半歩ずらして重ね、六芒星・八芒星にする。
+                polygon(s, n, ORNAMENT, 0.0, 1.8);
+                polygon(s, n, ORNAMENT, TAU / (2 * n) as f32, 1.8);
+            } else {
+                // 隣の隣より遠くを結ぶ。n の約数で閉じても、全頂点から引くので形は崩れない。
+                let n = n as usize;
+                let step = n / 2 - n.is_multiple_of(2) as usize;
+                for i in 0..n {
+                    line(s, pts[i], pts[(i + step) % n], 1.8);
+                }
+            }
+            for &(x, y) in &pts {
+                writeln!(
+                    s,
+                    r#"<circle cx="{x:.2}" cy="{y:.2}" r="18" stroke-width="2"/>"#
+                )
+                .unwrap();
+            }
+        }
+        Ornament::Chain => {
+            // 隣同士がちょうど接する半径。3 回対称だと中心まで届くので上限を付ける。
+            let r = (ORNAMENT * (TAU / (2 * n) as f32).sin()).min(70.0);
+            circle(s, ORNAMENT, 1.2);
+            for &(x, y) in &pts {
+                writeln!(
+                    s,
+                    r#"<circle cx="{x:.2}" cy="{y:.2}" r="{r:.2}" stroke-width="2"/>"#
+                )
+                .unwrap();
+                writeln!(
+                    s,
+                    r#"<circle cx="{x:.2}" cy="{y:.2}" r="{:.2}" stroke-width="1.2"/>"#,
+                    r * 0.45
+                )
+                .unwrap();
+            }
+        }
+        Ornament::Rays => {
+            for i in 0..n {
+                let theta = TAU * i as f32 / n as f32;
+                line(
+                    s,
+                    polar(CORE + 15.0, theta),
+                    polar(ORNAMENT - 26.0, theta),
+                    1.8,
+                );
+                line(
+                    s,
+                    polar(ORNAMENT + 26.0, theta),
+                    polar(RINGS_OUTER, theta),
+                    1.2,
+                );
+                // 先端の菱形
+                let d = [
+                    polar(ORNAMENT - 26.0, theta),
+                    polar(ORNAMENT, theta + 0.07),
+                    polar(ORNAMENT + 26.0, theta),
+                    polar(ORNAMENT, theta - 0.07),
+                ];
+                let pts: Vec<String> = d.iter().map(|(x, y)| format!("{x:.2},{y:.2}")).collect();
+                writeln!(
+                    s,
+                    r#"<polygon points="{}" stroke-width="2"/>"#,
+                    pts.join(" ")
+                )
+                .unwrap();
+            }
+        }
     }
     s.push_str("</g>\n");
 }
 
 fn core(s: &mut String, shape: Shape, symmetry: u8) {
+    let n = symmetry;
+    let at = |r: f32, i: u32, of: u32| polar(r, TAU * i as f32 / of as f32);
     match shape {
         Shape::Circle => {
             circle(s, CORE, 3.0);
             circle(s, CORE * 0.35, 2.0);
             // 中心から対称の数だけスポークを出す
-            for i in 0..symmetry {
-                let (x, y) = polar(CORE, TAU * i as f32 / symmetry as f32);
-                let (ix, iy) = polar(CORE * 0.35, TAU * i as f32 / symmetry as f32);
-                writeln!(
-                    s,
-                    r#"<line x1="{ix:.2}" y1="{iy:.2}" x2="{x:.2}" y2="{y:.2}" stroke-width="2"/>"#
-                )
-                .unwrap();
+            for i in 0..n as u32 {
+                line(s, at(CORE * 0.35, i, n as u32), at(CORE, i, n as u32), 2.0);
             }
         }
         Shape::Triangle => {
@@ -363,7 +411,7 @@ fn core(s: &mut String, shape: Shape, symmetry: u8) {
             let r = CORE / 2.0;
             circle(s, r, 2.5);
             for i in 0..6 {
-                let (x, y) = polar(r, TAU * i as f32 / 6.0);
+                let (x, y) = at(r, i, 6);
                 writeln!(
                     s,
                     r#"<circle cx="{x:.2}" cy="{y:.2}" r="{r:.2}" stroke-width="2.5"/>"#
@@ -372,7 +420,96 @@ fn core(s: &mut String, shape: Shape, symmetry: u8) {
             }
             circle(s, CORE, 3.0);
         }
+        Shape::Pentagram => {
+            circle(s, CORE, 3.0);
+            for i in 0..5 {
+                line(s, at(CORE, i, 5), at(CORE, i + 2, 5), 3.0);
+            }
+            // 星の内側にできる五角形に内接する円
+            circle(s, CORE * 0.38 * 0.81, 2.0);
+        }
+        Shape::Octagram => {
+            polygon(s, 4, CORE, 0.0, 3.0);
+            polygon(s, 4, CORE, TAU / 8.0, 3.0);
+            circle(s, CORE * 0.55, 2.0);
+            circle(s, CORE * 0.2, 2.0);
+        }
+        Shape::NestedPolygons => {
+            // 対称の数の多角形を、半歩ずつずらしながら小さく重ねる
+            let k = n.clamp(3, 8);
+            for (i, scale) in [1.0, 0.78, 0.56, 0.34].into_iter().enumerate() {
+                let offset = if i % 2 == 0 {
+                    0.0
+                } else {
+                    TAU / (2 * k) as f32
+                };
+                polygon(s, k, CORE * scale, offset, 3.0 - i as f32 * 0.5);
+            }
+        }
+        Shape::Spiral => {
+            circle(s, CORE, 3.0);
+            // 対称の数だけ腕を出し、外へ向かうほど回り込ませる
+            for arm in 0..n as u32 {
+                let start = TAU * arm as f32 / n as f32;
+                let d: String = (0..=24)
+                    .map(|j| {
+                        let f = j as f32 / 24.0;
+                        let (x, y) = polar(CORE * (0.08 + 0.92 * f), start + f * TAU * 0.45);
+                        format!("{}{x:.2} {y:.2}", if j == 0 { "M" } else { "L" })
+                    })
+                    .collect();
+                writeln!(s, r#"<path d="{d}" stroke-width="2.2"/>"#).unwrap();
+            }
+            circle(s, CORE * 0.08, 2.0);
+        }
+        Shape::Petals => {
+            circle(s, CORE, 3.0);
+            // 中心から外周へ伸びる花弁。両脇の制御点で膨らませる
+            for i in 0..n as u32 {
+                let theta = TAU * i as f32 / n as f32;
+                let spread = (TAU / n as f32).min(1.2) * 0.5;
+                let tip = polar(CORE * 0.95, theta);
+                let l = polar(CORE * 0.6, theta - spread);
+                let r = polar(CORE * 0.6, theta + spread);
+                writeln!(
+                    s,
+                    r#"<path d="M0 0Q{:.2} {:.2} {:.2} {:.2}Q{:.2} {:.2} 0 0" stroke-width="2.2"/>"#,
+                    l.0, l.1, tip.0, tip.1, r.0, r.1
+                )
+                .unwrap();
+            }
+            circle(s, CORE * 0.18, 2.0);
+        }
+        Shape::Metatron => {
+            // メタトロンの立方体: 中心・内側 6・外側 6 の 13 個の円と、その中心同士を結ぶ線
+            let d = CORE / 2.2;
+            let mut pts = vec![(0.0, 0.0)];
+            pts.extend((0..6).map(|i| at(d, i, 6)));
+            pts.extend((0..6).map(|i| at(d * 2.0, i, 6)));
+            for i in 0..pts.len() {
+                for j in i + 1..pts.len() {
+                    line(s, pts[i], pts[j], 0.9);
+                }
+            }
+            for &(x, y) in &pts {
+                writeln!(
+                    s,
+                    r#"<circle cx="{x:.2}" cy="{y:.2}" r="{:.2}" stroke-width="2"/>"#,
+                    d / 2.0
+                )
+                .unwrap();
+            }
+        }
     }
+}
+
+fn line(s: &mut String, a: (f32, f32), b: (f32, f32), width: f32) {
+    writeln!(
+        s,
+        r#"<line x1="{:.2}" y1="{:.2}" x2="{:.2}" y2="{:.2}" stroke-width="{width}"/>"#,
+        a.0, a.1, b.0, b.1
+    )
+    .unwrap();
 }
 
 fn polygon(s: &mut String, n: u8, r: f32, offset: f32, width: f32) {
@@ -412,6 +549,9 @@ fn particles(s: &mut String, rng: &mut ChaCha8Rng, count: u16, hue: f32) {
 mod tests {
     use super::*;
 
+    /// ルーンだけが `translate(...) rotate(...)` 付きの path で描かれる
+    const RUNE: &str = r#"" transform="translate("#;
+
     #[test]
     fn same_command_same_svg() {
         let a = svg(&MagicCircle::from_command("cargo build"));
@@ -430,12 +570,17 @@ mod tests {
     #[test]
     fn frames_build_up_to_the_full_circle() {
         let c = MagicCircle::from_command("git status");
-        assert_eq!(frame(&c, 0.0).matches("<path ").count(), 0);
-        assert_eq!(frame(&c, 1.0).matches("<path ").count(), c.runes as usize);
+        assert_eq!(frame(&c, 0.0).matches(RUNE).count(), 0);
+        assert_eq!(frame(&c, 1.0).matches(RUNE).count(), c.runes as usize);
         // 途中のコマでも字形は完成図と同じものが先頭から並ぶ
         let half = frame(&c, 0.4);
         let full = frame(&c, 1.0);
-        let first_rune = |s: &str| s.split("<path ").nth(1).map(|p| p[..40].to_string());
+        let first_rune = |s: &str| {
+            s.split(RUNE)
+                .next()
+                .and_then(|p| p.rsplit("<path ").next())
+                .map(str::to_string)
+        };
         assert_eq!(first_rune(&half), first_rune(&full));
         // 光りは完成の直前にだけ出て、完成のコマでは収まっている
         let flash = |s: &str| s.contains(&format!(r#"<circle r="{BAND_OUTER}" fill="#));
@@ -449,7 +594,7 @@ mod tests {
         let out = svg(&c);
         assert!(out.starts_with("<svg"));
         assert!(out.trim_end().ends_with("</svg>"));
-        assert_eq!(out.matches("<path ").count(), c.runes as usize);
+        assert_eq!(out.matches(RUNE).count(), c.runes as usize);
         assert_eq!(out.matches(r#"opacity=""#).count(), c.particles as usize);
     }
 }

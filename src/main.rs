@@ -130,8 +130,9 @@ fn explain(spell: &str, c: &MagicCircle) {
     eprintln!("✦ 魔法陣展開: {spell}");
     eprintln!("  hash      {}", c.hash_hex());
     eprintln!(
-        "  shape {}  rings {}  symmetry {}  runes {}  particles {}",
+        "  shape {}  ornament {}  rings {}  symmetry {}  runes {}  particles {}",
         c.shape.name(),
+        c.ornament.name(),
         c.rings,
         c.symmetry,
         c.runes,
