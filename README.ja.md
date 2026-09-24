@@ -188,3 +188,7 @@ stderr が端末でないとき（リダイレクト中など）は何も出し�
 ```sh
 python3 scripts/demo.py   # cargo, ImageMagick, script(1) が要る
 ```
+
+## ライセンス
+
+[MIT](LICENSE)

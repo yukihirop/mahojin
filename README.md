@@ -193,3 +193,7 @@ window and command output drawn around them (the commands are replaced with stub
 ```sh
 python3 scripts/demo.py   # needs cargo, ImageMagick and script(1)
 ```
+
+## License
+
+[MIT](LICENSE)

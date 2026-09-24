@@ -1,1 +1,4 @@
 /target
+# maho --share が書き出す画像と、--svg の書き出し先によく使う名前
+maho-*.png
+circle.svg
