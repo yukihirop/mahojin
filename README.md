@@ -58,6 +58,7 @@ $ maho --explain git status
 ✦ Magic circle unfolded: git status
   hash      e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6
   layout breach  shape wheel  ornament star  rings 5  symmetry 3  runes 27  particles 398
+  script dotted  size 1.12  spacing 0.37  separator none  band runes
   rotation 265.3°  hue 288.8°  clockwise
 ```
 
@@ -99,10 +100,13 @@ The language is chosen in this order: `--locale` > `MAHO_LOCALE` > the config fi
 
 1. Take the SHA-256 of the command string (the arguments joined with spaces)
 2. Seed a random generator (ChaCha8) with it, and draw the layout, core shape, ornament, number of rings,
-   symmetry, rune count, particle count, rotation, hue and spin direction
+   symmetry, rune count, particle count, rotation, hue, spin direction, and how the spell is written
 3. The layout is one of 3 (classic / grand star / breach), the core shape one of 12 (hexagram, pentagram,
    spiral, Metatron's cube, wheel, and more), and the ornament one of 6 (star, chain, rays, crown, web, beads)
-4. Build an SVG, turn it into PNGs with [resvg](https://github.com/linebender/resvg), and send them to the
+4. The spell is written in one of 4 scripts (runic / angular / flowing / dotted), at its own glyph size and
+   letter spacing, with one of 5 separators between repeats. The outer band holds runes with dots, the spell
+   in large glyphs, or runes with clock-like ticks
+5. Build an SVG, turn it into PNGs with [resvg](https://github.com/linebender/resvg), and send them to the
    terminal: 16 frames that draw the circle from the outer band inward
 
 ## Supported terminals

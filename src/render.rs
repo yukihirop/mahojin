@@ -10,7 +10,7 @@ use std::fmt::Write;
 use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 
-use crate::circle::{Layout, MagicCircle, Ornament, Shape, unit};
+use crate::circle::{Band, Layout, MagicCircle, Ornament, Shape, unit};
 use crate::script;
 
 const SIZE: f32 = 1000.0;
@@ -147,7 +147,21 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     drawn_circle(&mut s, BAND_INNER, 2.5, st.band);
     s.push_str("</g>\n");
     let visible = (c.runes as f32 * st.runes).ceil() as u8;
-    runes(&mut s, &mut rng, c.runes, visible);
+    match c.band {
+        Band::Runes | Band::Ticks => runes(&mut s, &mut rng, c.runes, visible, c.band),
+        // 帯の幅いっぱいの大きな字で呪文を書く。区切りと字間は内側の帯と揃える
+        Band::Script => script::ring(
+            &mut s,
+            spell,
+            &script::Hand {
+                size: 1.0,
+                ..c.hand
+            },
+            (BAND_OUTER + BAND_INNER) / 2.0,
+            20.0,
+            st.runes,
+        ),
+    }
     s.push_str("</g>\n");
 
     if st.rings > 0.0 {
@@ -155,7 +169,7 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
         open_double(&mut s);
         inner_rings(&mut s, c.rings, &sub);
         s.push_str("</g>\n");
-        script::ring(&mut s, spell, TEXT_OUTER, 10.0, st.rings);
+        script::ring(&mut s, spell, &c.hand, TEXT_OUTER, 10.0, st.rings);
         s.push_str("</g>\n");
     }
 
@@ -174,7 +188,7 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
                 ornament(&mut s, c.ornament, c.symmetry, &sub);
                 s.push_str("</g>\n");
             }
-            Layout::Grand => grand_star(&mut s, c.symmetry, spell, &main),
+            Layout::Grand => grand_star(&mut s, c.symmetry, spell, c.hand.style, &main),
         }
         s.push_str("</g>\n");
 
@@ -198,7 +212,7 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
         open_double(&mut s);
         core(&mut s, c.shape, c.symmetry);
         s.push_str("</g>\n");
-        script::ring(&mut s, spell, TEXT_INNER, 7.0, st.core);
+        script::ring(&mut s, spell, &c.hand, TEXT_INNER, 7.0, st.core);
         s.push_str("</g>\n");
     }
 
@@ -227,7 +241,7 @@ fn open_double(s: &mut String) {
 
 /// 魔法陣いっぱいに広がる星。頂点はルーン帯に届き、そこに背景色で塗った円を置いて
 /// 帯の上に乗っているように見せる。星の内側にできる多角形には内接円を引く。
-fn grand_star(s: &mut String, n: u8, spell: &str, color: &str) {
+fn grand_star(s: &mut String, n: u8, spell: &str, style: script::Style, color: &str) {
     let r = BAND_INNER;
     let pts: Vec<(f32, f32)> = (0..n)
         .map(|i| polar(r, TAU * i as f32 / n as f32))
@@ -274,7 +288,7 @@ fn grand_star(s: &mut String, n: u8, spell: &str, color: &str) {
             writeln!(
                 s,
                 r#"<path d="{}" fill="none" stroke-width="2.5" transform="translate({x:.2} {y:.2}) rotate({:.2})"/>"#,
-                script::glyph_d(b, 11.0, 18.0),
+                script::glyph_d(style, b, 11.0, 18.0),
                 360.0 * i as f32 / n as f32
             )
             .unwrap();
@@ -361,7 +375,7 @@ fn polar(r: f32, theta: f32) -> (f32, f32) {
 /// ルーン帯に `count` 個の字形を等間隔で並べ、先頭から `visible` 個だけ描く。
 /// 字形は 3×3 の格子上の縦棒 1 本と、乱数で選んだ 1〜3 本の画でできている。
 /// 描かない字形も乱数は引く。コマによって字形が変わらないようにするため。
-fn runes(s: &mut String, rng: &mut ChaCha8Rng, count: u8, visible: u8) {
+fn runes(s: &mut String, rng: &mut ChaCha8Rng, count: u8, visible: u8, band: Band) {
     const GRID: [(f32, f32); 9] = [
         (-1.0, -1.0),
         (0.0, -1.0),
@@ -408,9 +422,30 @@ fn runes(s: &mut String, rng: &mut ChaCha8Rng, count: u8, visible: u8) {
             theta.to_degrees()
         )
         .unwrap();
-        // 字と字の間に小さな点を打ち、字が少ないときでも帯が途切れて見えないようにする
-        let (dx, dy) = polar(mid, theta + TAU / (2 * count as u32) as f32);
-        writeln!(s, r#"<circle cx="{dx:.2}" cy="{dy:.2}" r="3.5"/>"#).unwrap();
+        let gap = TAU / count as f32;
+        if band == Band::Ticks {
+            // 字と字の間を目盛りで刻む。帯の内と外の縁から短い線を伸ばす
+            for k in 1..6 {
+                let a = theta + gap * k as f32 / 6.0;
+                let len = if k == 3 { 14.0 } else { 7.0 };
+                line(
+                    s,
+                    polar(BAND_INNER + 3.0, a),
+                    polar(BAND_INNER + 3.0 + len, a),
+                    2.0,
+                );
+                line(
+                    s,
+                    polar(BAND_OUTER - 3.0, a),
+                    polar(BAND_OUTER - 3.0 - len, a),
+                    2.0,
+                );
+            }
+        } else {
+            // 字と字の間に小さな点を打ち、字が少ないときでも帯が途切れて見えないようにする
+            let (dx, dy) = polar(mid, theta + gap / 2.0);
+            writeln!(s, r#"<circle cx="{dx:.2}" cy="{dy:.2}" r="3.5"/>"#).unwrap();
+        }
     }
     s.push_str("</g>\n");
 }
@@ -761,6 +796,15 @@ mod tests {
 
     const RUNE: &str = r#"<path class="rune""#;
 
+    /// 帯にルーンを並べる魔法陣になるコマンド
+    fn with_band(band: Band) -> (MagicCircle, String) {
+        (0..)
+            .map(|i| format!("cmd {i}"))
+            .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
+            .find(|(c, _)| c.band == band)
+            .unwrap()
+    }
+
     #[test]
     fn same_command_same_svg() {
         let a = svg(&MagicCircle::from_command("cargo build"), "cargo build");
@@ -778,15 +822,16 @@ mod tests {
 
     #[test]
     fn frames_build_up_to_the_full_circle() {
-        let c = MagicCircle::from_command("git status");
-        assert_eq!(frame(&c, "git status", 0.0).matches(RUNE).count(), 0);
+        let (c, spell) = with_band(Band::Runes);
+        let spell = spell.as_str();
+        assert_eq!(frame(&c, spell, 0.0).matches(RUNE).count(), 0);
         assert_eq!(
-            frame(&c, "git status", 1.0).matches(RUNE).count(),
+            frame(&c, spell, 1.0).matches(RUNE).count(),
             c.runes as usize
         );
         // 途中のコマでも字形は完成図と同じものが先頭から並ぶ
-        let half = frame(&c, "git status", 0.4);
-        let full = frame(&c, "git status", 1.0);
+        let half = frame(&c, spell, 0.4);
+        let full = frame(&c, spell, 1.0);
         let first_rune = |s: &str| s.split(RUNE).nth(1).map(|p| p[..60].to_string());
         assert_eq!(first_rune(&half), first_rune(&full));
         // 光りは完成の直前にだけ出て、完成のコマでは収まっている
@@ -795,17 +840,36 @@ mod tests {
             s.lines()
                 .any(|l| l.starts_with("<circle r=") && l.contains(r#"fill="hsl"#))
         };
-        assert!(flash(&frame(&c, "git status", 0.9)));
+        assert!(flash(&frame(&c, spell, 0.9)));
         assert!(!flash(&full));
     }
 
     #[test]
     fn draws_every_rune_and_particle() {
-        let c = MagicCircle::from_command("git status");
-        let out = svg(&c, "git status");
+        let (c, spell) = with_band(Band::Runes);
+        let out = svg(&c, &spell);
         assert!(out.starts_with("<svg"));
         assert!(out.trim_end().ends_with("</svg>"));
         assert_eq!(out.matches(RUNE).count(), c.runes as usize);
         assert_eq!(out.matches(r#"opacity=""#).count(), c.particles as usize);
+    }
+
+    #[test]
+    fn band_styles() {
+        // 目盛りは字の間に 5 本ずつ、内と外の縁で 2 倍
+        let (c, spell) = with_band(Band::Ticks);
+        let out = svg(&c, &spell);
+        assert_eq!(out.matches(RUNE).count(), c.runes as usize);
+        let ticks = |s: &str| s.matches("<line ").count();
+        let (plain, plain_spell) = with_band(Band::Runes);
+        let base = ticks(&svg(&plain, &plain_spell));
+        assert!(
+            ticks(&out) >= c.runes as usize * 10,
+            "{} {base}",
+            ticks(&out)
+        );
+        // 呪文の帯にはルーンが無い
+        let (c, spell) = with_band(Band::Script);
+        assert_eq!(svg(&c, &spell).matches(RUNE).count(), 0);
     }
 }

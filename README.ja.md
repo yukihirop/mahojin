@@ -58,6 +58,7 @@ $ maho --explain git status
 ✦ 魔法陣展開: git status
   hash      e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6
   layout 突破  shape 車輪  ornament 星形  rings 5  symmetry 3  runes 27  particles 398
+  script 点文字  size 1.12  spacing 0.37  separator なし  band ルーン
   rotation 265.3°  hue 288.8°  右回り
 ```
 
@@ -98,10 +99,13 @@ maho --locale en ls        # 今回だけ英語
 
 1. コマンド文字列（引数を空白で連結したもの）の SHA-256 を取る
 2. それを種にした乱数（ChaCha8）から、配置・中心図形・装飾・円の数・対称性・ルーン数・
-   粒子数・回転・色相・回転方向を引く
+   粒子数・回転・色相・回転方向・呪文の書き方を引く
 3. 配置は 3 種（標準 / 大星 / 突破）、中心図形は 12 種（六芒星・五芒星・螺旋・
    メタトロン・車輪など）、装飾は 6 種（星形・円鎖・光条・冠・網・数珠）から選ばれる
-4. SVG を組み立て、[resvg](https://github.com/linebender/resvg) で PNG にして端末へ送る。
+4. 呪文は 4 種の書体（刻文字・角文字・流文字・点文字）のどれかで、魔法陣ごとの字の大きさと字間で書かれ、
+   繰り返しの切れ目には 5 種の区切り（菱形・点・星・棒・なし）が入る。外周の帯には、点を挟んだルーン・
+   大きな字の呪文・目盛りを挟んだルーンのどれかが並ぶ
+5. SVG を組み立て、[resvg](https://github.com/linebender/resvg) で PNG にして端末へ送る。
    外側の帯から内側へ、順に描き上がっていくコマを 16 枚流す
 
 ## 対応している端末

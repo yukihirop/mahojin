@@ -8,6 +8,7 @@ use rand_core::{Rng, SeedableRng};
 use sha2::{Digest, Sha256};
 
 use crate::locale::Locale;
+use crate::script::{Hand, Separator, Style};
 
 /// 魔法陣の中心に据える図形。ハッシュの先頭バイトがそのまま決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,6 +126,29 @@ impl Layout {
     }
 }
 
+/// 外周の帯に何を並べるか。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Band {
+    /// ルーンの間に点を打つ
+    Runes,
+    /// 呪文そのものを大きな字で書く
+    Script,
+    /// ルーンの間を、時計の文字盤のような目盛りで埋める
+    Ticks,
+}
+
+impl Band {
+    pub const ALL: [Band; 3] = [Band::Runes, Band::Script, Band::Ticks];
+
+    pub fn name(self, l: Locale) -> &'static str {
+        match self {
+            Band::Runes => l.pick("ルーン", "runes"),
+            Band::Script => l.pick("呪文", "script"),
+            Band::Ticks => l.pick("目盛り", "ticks"),
+        }
+    }
+}
+
 const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,6 +172,9 @@ pub struct MagicCircle {
     pub hue: f32,
     /// 時計回りなら true
     pub clockwise: bool,
+    /// 呪文を書く筆致（書体・大きさ・字間・区切り）
+    pub hand: Hand,
+    pub band: Band,
 }
 
 impl MagicCircle {
@@ -171,6 +198,13 @@ impl MagicCircle {
             // 後から足したパラメータは必ず末尾で引く。前の値の割り当てが変わらず、
             // それまでの魔法陣のパラメータがそのまま保たれる。
             layout: [Layout::Classic, Layout::Grand, Layout::Breach][below(&mut rng, 3) as usize],
+            hand: Hand {
+                style: Style::ALL[below(&mut rng, Style::ALL.len() as u32) as usize],
+                size: 0.7 + unit(&mut rng) * 0.7,
+                spacing: 0.3 + unit(&mut rng) * 1.3,
+                separator: Separator::ALL[below(&mut rng, Separator::ALL.len() as u32) as usize],
+            },
+            band: Band::ALL[below(&mut rng, Band::ALL.len() as u32) as usize],
         }
     }
 
@@ -219,6 +253,8 @@ mod tests {
             assert!((0.0..360.0).contains(&c.rotation));
             assert!(c.particles <= 500);
             assert!((0.0..360.0).contains(&c.hue));
+            assert!((0.7..1.4).contains(&c.hand.size));
+            assert!((0.3..1.6).contains(&c.hand.spacing));
         }
     }
 
@@ -233,6 +269,15 @@ mod tests {
         assert!(circles.iter().any(|c| c.layout == Layout::Classic));
         assert!(circles.iter().any(|c| c.layout == Layout::Grand));
         assert!(circles.iter().any(|c| c.layout == Layout::Breach));
+        for style in Style::ALL {
+            assert!(circles.iter().any(|c| c.hand.style == style), "{style:?}");
+        }
+        for sep in Separator::ALL {
+            assert!(circles.iter().any(|c| c.hand.separator == sep), "{sep:?}");
+        }
+        for band in Band::ALL {
+            assert!(circles.iter().any(|c| c.band == band), "{band:?}");
+        }
         for ornament in Ornament::ALL {
             assert!(
                 circles.iter().any(|c| c.ornament == ornament),
@@ -259,6 +304,10 @@ mod tests {
                 c.clockwise
             ),
             GOLDEN_PARAMS
+        );
+        assert_eq!(
+            (c.hand.style, c.hand.separator, c.band),
+            (Style::Dotted, Separator::None, Band::Runes)
         );
     }
 

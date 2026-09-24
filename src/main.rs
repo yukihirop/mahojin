@@ -347,6 +347,14 @@ fn explain(spell: &str, c: &MagicCircle, l: Locale) {
         c.particles
     );
     eprintln!(
+        "  script {}  size {:.2}  spacing {:.2}  separator {}  band {}",
+        c.hand.style.name(l),
+        c.hand.size,
+        c.hand.spacing,
+        c.hand.separator.name(l),
+        c.band.name(l)
+    );
+    eprintln!(
         "  rotation {:.1}°  hue {:.1}°  {}",
         c.rotation,
         c.hue,
