@@ -30,6 +30,9 @@ const TEXT_INNER: f32 = 205.0;
 /// 大きな星の頂点に置く円の半径。中心はルーン帯の上に来る
 const GRAND_VERTEX: f32 = 46.0;
 const BACKGROUND: &str = "#07070f";
+/// 突破の配置で、外周を破る多角形の外接半径。はみ出すぶん全体を縮めて描く
+const BREACH: f32 = 560.0;
+const BREACH_SCALE: f32 = 0.86;
 
 /// 完成した魔法陣。ブラウザで開くと SMIL で回り続ける。
 pub fn svg(c: &MagicCircle, spell: &str) -> String {
@@ -115,10 +118,15 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     .unwrap();
 
     particles(&mut s, &mut rng, c.particles, hue);
+    let scale = if c.layout == Layout::Breach {
+        BREACH_SCALE
+    } else {
+        1.0
+    };
 
     writeln!(
         s,
-        r#"<g fill="none" stroke="{main}" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)" transform="rotate({:.2})">"#,
+        r#"<g fill="none" stroke="{main}" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)" transform="rotate({:.2}) scale({scale})">"#,
         c.rotation
     )
     .unwrap();
@@ -161,7 +169,7 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
             45,
         );
         match c.layout {
-            Layout::Classic => {
+            Layout::Classic | Layout::Breach => {
                 open_double(&mut s);
                 ornament(&mut s, c.ornament, c.symmetry, &sub);
                 s.push_str("</g>\n");
@@ -169,6 +177,20 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
             Layout::Grand => grand_star(&mut s, c.symmetry, spell, &main),
         }
         s.push_str("</g>\n");
+
+        // 外周を破る多角形は、装飾とは逆にルーン帯と同じ向きへ回す
+        if c.layout == Layout::Breach {
+            open_layer(
+                &mut s,
+                t,
+                st.ornament,
+                dir * 120.0 * (1.0 - st.ornament),
+                dir * 360.0,
+                120,
+            );
+            breach(&mut s, c.symmetry);
+            s.push_str("</g>\n");
+        }
     }
 
     if st.core > 0.0 {
@@ -184,7 +206,8 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     if st.flash > 0.0 {
         writeln!(
             s,
-            r#"<circle r="{BAND_OUTER}" fill="{main}" opacity="{:.3}"/>"#,
+            r#"<circle r="{:.1}" fill="{main}" opacity="{:.3}"/>"#,
+            BAND_OUTER * scale,
             0.18 * st.flash
         )
         .unwrap();
@@ -256,6 +279,26 @@ fn grand_star(s: &mut String, n: u8, spell: &str, color: &str) {
             )
             .unwrap();
         }
+    }
+    s.push_str("</g>\n");
+}
+
+/// 外周の円を頂点が突き破る大きな三角か四角。頂点には小さな二重円を置く。
+fn breach(s: &mut String, symmetry: u8) {
+    let k = match symmetry {
+        3 | 4 => symmetry,
+        n if n % 2 == 0 => 4,
+        _ => 3,
+    };
+    open_double(s);
+    polygon(s, k, BREACH, 0.0, 3.5);
+    for i in 0..k {
+        let (x, y) = polar(BREACH, TAU * i as f32 / k as f32);
+        writeln!(
+            s,
+            r#"<circle cx="{x:.2}" cy="{y:.2}" r="14" stroke-width="2.5"/>"#
+        )
+        .unwrap();
     }
     s.push_str("</g>\n");
 }
@@ -469,6 +512,52 @@ fn ornament(s: &mut String, kind: Ornament, n: u8, color: &str) {
                 .unwrap();
             }
         }
+        Ornament::Crown => {
+            // 3 と 4 は辺が中心図形にかかるので、倍の角数で組む
+            let k = if n < 5 { 2 * n } else { n } as u32;
+            let base = CORE / (TAU / (2 * k) as f32).cos() + 25.0;
+            let apex = RINGS_OUTER - 10.0;
+            circle(s, apex, 1.2);
+            for i in 0..k {
+                let a = polar(base, TAU * i as f32 / k as f32);
+                let b = polar(base, TAU * (i + 1) as f32 / k as f32);
+                let top = polar(apex, TAU * (i as f32 + 0.5) / k as f32);
+                line(s, a, b, 2.0);
+                line(s, a, top, 1.6);
+                line(s, top, b, 1.6);
+            }
+        }
+        Ornament::Web => {
+            let k = if n < 5 { 2 * n } else { n } as u32;
+            let inner = CORE / (TAU / (2 * k) as f32).cos() + 20.0;
+            let outer = RINGS_OUTER - 20.0;
+            polygon(s, k as u8, outer, 0.0, 2.0);
+            polygon(s, k as u8, inner, TAU / (2 * k) as f32, 2.0);
+            // 外の頂点から内の両隣の頂点へ引いて、三角の帯にする
+            for i in 0..k {
+                let o = polar(outer, TAU * i as f32 / k as f32);
+                let l = polar(inner, TAU * (i as f32 - 0.5) / k as f32);
+                let r = polar(inner, TAU * (i as f32 + 0.5) / k as f32);
+                line(s, o, l, 1.4);
+                line(s, o, r, 1.4);
+            }
+        }
+        Ornament::Beads => {
+            let (lo, hi) = (ORNAMENT - 28.0, ORNAMENT + 28.0);
+            circle(s, lo, 1.6);
+            circle(s, hi, 1.6);
+            let k = 2 * n as u32;
+            for i in 0..k {
+                let (x, y) = polar(ORNAMENT, TAU * i as f32 / k as f32);
+                // 対称の頂点に来る玉だけ大きくする
+                let r = if i % 2 == 0 { 21.0 } else { 12.0 };
+                writeln!(
+                    s,
+                    r#"<circle cx="{x:.2}" cy="{y:.2}" r="{r}" stroke-width="2"/>"#
+                )
+                .unwrap();
+            }
+        }
     }
     s.push_str("</g>\n");
 }
@@ -589,6 +678,38 @@ fn core(s: &mut String, shape: Shape, symmetry: u8) {
                 .unwrap();
             }
         }
+        Shape::Wheel => {
+            // 多角形の頂点へ、中心の二重円からスポークを出す
+            let k = if n < 5 { 2 * n } else { n };
+            polygon(s, k, CORE, 0.0, 3.0);
+            circle(s, CORE * 0.3, 2.0);
+            circle(s, CORE * 0.37, 2.0);
+            for i in 0..k as u32 {
+                line(s, at(CORE * 0.37, i, k as u32), at(CORE, i, k as u32), 2.0);
+                // 隣の頂点との中点へも細いスポークを出して、扇に割る
+                let mid = polar(
+                    CORE * (TAU / (2 * k) as f32).cos(),
+                    TAU * (i as f32 + 0.5) / k as f32,
+                );
+                line(s, at(CORE * 0.37, i, k as u32), mid, 1.0);
+            }
+        }
+        Shape::Satellites => {
+            // 多角形の中の、頂点寄りに小さな円を浮かべる
+            let k = n.clamp(3, 6);
+            polygon(s, k, CORE, 0.0, 3.0);
+            polygon(s, k, CORE * 0.42, TAU / (2 * k) as f32, 1.8);
+            for i in 0..k as u32 {
+                let (x, y) = at(CORE * 0.62, i, k as u32);
+                writeln!(
+                    s,
+                    r#"<circle cx="{x:.2}" cy="{y:.2}" r="{:.1}" stroke-width="2.2"/>"#,
+                    CORE * 0.12
+                )
+                .unwrap();
+            }
+            circle(s, CORE * 0.12, 2.0);
+        }
     }
 }
 
@@ -669,7 +790,11 @@ mod tests {
         let first_rune = |s: &str| s.split(RUNE).nth(1).map(|p| p[..60].to_string());
         assert_eq!(first_rune(&half), first_rune(&full));
         // 光りは完成の直前にだけ出て、完成のコマでは収まっている
-        let flash = |s: &str| s.contains(&format!(r#"<circle r="{BAND_OUTER}" fill="#));
+        // 光りは、塗りのある大きな円として 1 枚だけ重ねる
+        let flash = |s: &str| {
+            s.lines()
+                .any(|l| l.starts_with("<circle r=") && l.contains(r#"fill="hsl"#))
+        };
         assert!(flash(&frame(&c, "git status", 0.9)));
         assert!(!flash(&full));
     }

@@ -20,10 +20,12 @@ pub enum Shape {
     Spiral,
     Petals,
     Metatron,
+    Wheel,
+    Satellites,
 }
 
 impl Shape {
-    const ALL: [Shape; 10] = [
+    const ALL: [Shape; 12] = [
         Shape::Circle,
         Shape::Triangle,
         Shape::Hexagram,
@@ -34,6 +36,8 @@ impl Shape {
         Shape::Spiral,
         Shape::Petals,
         Shape::Metatron,
+        Shape::Wheel,
+        Shape::Satellites,
     ];
 
     /// 0x00..=0xff を種類の数で等分し、先頭バイトが入った区間の図形にする。
@@ -53,6 +57,8 @@ impl Shape {
             Shape::Spiral => "螺旋",
             Shape::Petals => "花弁",
             Shape::Metatron => "メタトロン",
+            Shape::Wheel => "車輪",
+            Shape::Satellites => "衛星",
         }
     }
 }
@@ -66,16 +72,32 @@ pub enum Ornament {
     Chain,
     /// 中心から伸びる光条と、先端の菱形
     Rays,
+    /// 多角形の各辺に三角を載せ、頂点を外の円に届かせた冠
+    Crown,
+    /// 外と内の多角形をジグザグの三角でつないだ網
+    Web,
+    /// 2 本の円の間に小さな円を並べた数珠
+    Beads,
 }
 
 impl Ornament {
-    const ALL: [Ornament; 3] = [Ornament::Star, Ornament::Chain, Ornament::Rays];
+    const ALL: [Ornament; 6] = [
+        Ornament::Star,
+        Ornament::Chain,
+        Ornament::Rays,
+        Ornament::Crown,
+        Ornament::Web,
+        Ornament::Beads,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             Ornament::Star => "星形",
             Ornament::Chain => "円鎖",
             Ornament::Rays => "光条",
+            Ornament::Crown => "冠",
+            Ornament::Web => "網",
+            Ornament::Beads => "数珠",
         }
     }
 }
@@ -87,6 +109,8 @@ pub enum Layout {
     Classic,
     /// 星が魔法陣いっぱいに広がり、頂点の円が外周の帯に重なる
     Grand,
+    /// 標準の配置に、頂点が外周を突き破る大きな三角か四角を重ねる
+    Breach,
 }
 
 impl Layout {
@@ -94,6 +118,7 @@ impl Layout {
         match self {
             Layout::Classic => "標準",
             Layout::Grand => "大星",
+            Layout::Breach => "突破",
         }
     }
 }
@@ -105,7 +130,7 @@ pub struct MagicCircle {
     pub hash: [u8; 32],
     pub layout: Layout,
     pub shape: Shape,
-    /// `Layout::Classic` のときだけ描かれる。`Grand` では大きな星が代わりを務める
+    /// `Layout::Grand` では描かれず、大きな星が代わりを務める
     pub ornament: Ornament,
     /// 同心円の数 (3..=7)。外周のルーン帯の 2 本を含むので、内側には 1〜5 本
     pub rings: u8,
@@ -143,11 +168,7 @@ impl MagicCircle {
             clockwise: rng.next_u32() & 1 == 0,
             // 後から足したパラメータは必ず末尾で引く。前の値の割り当てが変わらず、
             // それまでの魔法陣のパラメータがそのまま保たれる。
-            layout: if rng.next_u32() & 1 == 0 {
-                Layout::Classic
-            } else {
-                Layout::Grand
-            },
+            layout: [Layout::Classic, Layout::Grand, Layout::Breach][below(&mut rng, 3) as usize],
         }
     }
 
@@ -209,6 +230,7 @@ mod tests {
         }
         assert!(circles.iter().any(|c| c.layout == Layout::Classic));
         assert!(circles.iter().any(|c| c.layout == Layout::Grand));
+        assert!(circles.iter().any(|c| c.layout == Layout::Breach));
         for ornament in Ornament::ALL {
             assert!(
                 circles.iter().any(|c| c.ornament == ornament),
@@ -240,8 +262,8 @@ mod tests {
 
     const GOLDEN_HASH: &str = "e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6";
     const GOLDEN_PARAMS: (Layout, Shape, Ornament, u8, u8, u8, u16, bool) = (
-        Layout::Grand,
-        Shape::Petals,
+        Layout::Breach,
+        Shape::Wheel,
         Ornament::Star,
         5,
         3,
