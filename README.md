@@ -138,6 +138,10 @@ When a cast fills in something new, a line like `✦ New in the grimoire: major 
 appears under the circle. Once all 38 are in, the skeletons (shape × layout × tier, 144 in all) are the
 long game. An ornament only counts when you can see it, so a grand star layout doesn't fill one in.
 
+There are about 65 million + α combinations in all, so you'll hardly ever meet the same circle twice.
+Collecting every skeleton takes around 15,000 different commands, so completing it is
+practically impossible; take your time. Arguments are part of the spell, so every `git commit -m "..."` casts a new one.
+
 The grimoire lives at `$XDG_DATA_HOME/maho/grimoire` (or `~/.local/share/maho/grimoire`). It keeps
 only each command's hash and how many times you cast it, never the command itself.
 
@@ -146,13 +150,14 @@ only each command's hash and how many times you cast it, never the command itsel
 1. Take the SHA-256 of the command string (the arguments joined with spaces)
 2. Seed a random generator (ChaCha8) with it, and draw the layout, core shape, ornament, number of rings,
    symmetry, rune count, particle count, rotation, hue, spin direction, how the spell is written, and the tier
-3. The layout is one of 3 (classic / grand star / breach), the core shape one of 12 (hexagram, pentagram,
-   spiral, Metatron's cube, wheel, and more), and the ornament one of 6 (star, chain, rays, crown, web, beads)
-4. The spell is written in one of 4 scripts (runic / angular / flowing / dotted), at its own glyph size and
-   letter spacing, with one of 5 separators between repeats. The outer band holds runes with dots, the spell
-   in large glyphs, or runes with clock-like ticks
+3. The layout is one of 3, the core shape one of 12, and the ornament one of 6
+4. The spell is written in one of 4 scripts, at its own glyph size and letter spacing, with one of 5
+   separators between repeats. The outer band comes in 3 kinds
 5. Build an SVG, turn it into PNGs with [resvg](https://github.com/linebender/resvg), and send them to the
    terminal: 16 frames that draw the circle from the outer band inward
+
+What each kind looks like is for you to find out by casting. The ones you've met are in the grimoire
+(`maho --grimoire`).
 
 ## Supported terminals
 
