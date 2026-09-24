@@ -1,14 +1,25 @@
 mod circle;
+mod render;
 
 use std::process::{Command, ExitCode};
 
 use circle::MagicCircle;
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // maho 自身のオプションはコマンドより前だけに置ける。以降はすべてコマンドに渡す。
+    let mut svg_path = None;
+    if args.first().map(String::as_str) == Some("--svg") {
+        if args.len() < 2 {
+            eprintln!("maho: --svg にはファイルパスが要ります");
+            return ExitCode::from(2);
+        }
+        svg_path = Some(args.remove(1));
+        args.remove(0);
+    }
     if args.is_empty() {
-        eprintln!("usage: maho <command> [args...]");
-        eprintln!("       maho \"<shell command>\"");
+        eprintln!("usage: maho [--svg <file>] <command> [args...]");
+        eprintln!("       maho [--svg <file>] \"<shell command>\"");
         return ExitCode::from(2);
     }
 
@@ -17,6 +28,13 @@ fn main() -> ExitCode {
     let circle = MagicCircle::from_command(&spell);
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
     announce(&spell, &circle);
+    if let Some(path) = &svg_path {
+        if let Err(e) = std::fs::write(path, render::svg(&circle)) {
+            eprintln!("maho: 魔法陣を書き出せません: {path}: {e}");
+            return ExitCode::from(1);
+        }
+        eprintln!("  svg       {path}");
+    }
 
     // 引数 1 つで空白を含むなら `maho "cargo build && ls"` の形とみなしてシェルに渡す。
     let mut cmd = if args.len() == 1 && args[0].contains(char::is_whitespace) {

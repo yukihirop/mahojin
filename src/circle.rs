@@ -89,7 +89,7 @@ fn below(rng: &mut ChaCha8Rng, n: u32) -> u32 {
 }
 
 /// [0, 1) の実数。
-fn unit(rng: &mut ChaCha8Rng) -> f32 {
+pub(crate) fn unit(rng: &mut ChaCha8Rng) -> f32 {
     (rng.next_u32() >> 8) as f32 / (1u32 << 24) as f32
 }
 
