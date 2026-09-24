@@ -13,7 +13,7 @@ const MAX_SPELL: usize = 60;
 pub fn post(c: &MagicCircle, spell: &str, l: Locale) -> String {
     let (layout, shape, ornament) = (c.layout.name(l), c.shape.name(l), c.ornament.name(l));
     let (spell, sigil) = (shorten(spell), &c.hash_hex()[..8]);
-    let tier = c.title(l);
+    let tier = c.starred_title(l);
     let when = c.omen.map(|o| o.when(l));
     let body = match l {
         Locale::Ja => format!(
@@ -80,7 +80,7 @@ mod tests {
         let p = post(&c, "git status", Locale::Ja);
         assert!(p.starts_with(&format!(
             "「git status」を唱えたら、{}の魔法陣が",
-            c.tier.name(Locale::Ja)
+            c.tier.starred(Locale::Ja)
         )));
         assert!(p.contains("突破の陣 / 車輪 / 星形 / 3 回対称"));
         assert!(p.contains("呪紋 e62b04aa"));
@@ -89,15 +89,16 @@ mod tests {
 
         let p = post(&c, "git status", Locale::En);
         assert!(p.starts_with("I cast \"git status\" and "));
-        assert!(p.contains(c.tier.name(Locale::En)));
+        assert!(p.contains(&c.tier.starred(Locale::En)));
         // 母音で始まる格には an を付ける
         let ultimate = MagicCircle {
             tier: crate::circle::Tier::Ultimate,
             ..c.clone()
         };
         assert!(
-            post(&ultimate, "git status", Locale::En)
-                .starts_with("I cast \"git status\" and an ultimate spell circle unfolded")
+            post(&ultimate, "git status", Locale::En).starts_with(
+                "I cast \"git status\" and an ultimate spell (★★★★☆☆) circle unfolded"
+            )
         );
         assert!(p.contains("breach layout / wheel / star / 3-fold symmetry"));
         assert!(p.contains("Sigil e62b04aa"));

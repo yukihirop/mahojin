@@ -397,7 +397,7 @@ pub fn show(g: &Grimoire, l: Locale) -> String {
             .iter()
             .map(|&i| match i {
                 _ if !found.contains(&i) => unknown.to_string(),
-                Item::Tier(t) => format!("{} {}", t.name(l), g.spells_of(t)),
+                Item::Tier(t) => format!("{} {}", t.starred(l), g.spells_of(t)),
                 Item::Symmetry(n) => n.to_string(),
                 Item::Layout(x) => x.name(l).into(),
                 Item::Band(b) => b.name(l).into(),

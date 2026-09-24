@@ -193,6 +193,24 @@ impl Tier {
             Tier::Ultimate => l.pick("極大魔法", "ultimate spell"),
         }
     }
+
+    /// 格の段（小魔法が 1）
+    fn rank(self) -> usize {
+        self as usize + 1
+    }
+
+    /// 格名に星を添える。`大魔法 (★★★☆☆☆)`
+    pub fn starred(self, l: Locale) -> String {
+        format!("{} ({})", self.name(l), stars(self.rank()))
+    }
+}
+
+/// 星の数。格の 4 段と禁呪の超極大魔法に、誰も届かない 1 段を足す
+const STARS: usize = Tier::ALL.len() + 2;
+
+/// 段の数だけ塗った星。最後の 1 つはどの段でも塗られない
+fn stars(rank: usize) -> String {
+    "★".repeat(rank) + &"☆".repeat(STARS - rank)
 }
 
 pub const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
@@ -325,6 +343,17 @@ impl MagicCircle {
         }
     }
 
+    /// 格の名前に星を添える。神聖魔法と召喚魔法は格の段の外にあるので、星を付けない
+    pub fn starred_title(&self, l: Locale) -> String {
+        if self.holy || self.summoned {
+            self.title(l).into()
+        } else if self.forbidden {
+            format!("{} ({})", self.title(l), stars(Tier::ALL.len() + 1))
+        } else {
+            self.tier.starred(l)
+        }
+    }
+
     /// 端末に出すときの高さ（行数）。超極大魔法は極大魔法より一回り大きく、神聖魔法はさらに大きい
     pub fn rows(&self) -> u32 {
         if self.holy {
@@ -387,6 +416,20 @@ mod tests {
         assert_eq!((holy.shape, holy.layout), (plain.shape, plain.layout));
         assert!(holy.rows() > Tier::Ultimate.rows());
         assert_eq!(holy.title(Locale::Ja), "神聖魔法");
+    }
+
+    #[test]
+    fn stars_leave_the_last_one_empty() {
+        let mut c = MagicCircle::from_command("git status");
+        c.tier = Tier::Small;
+        assert_eq!(c.starred_title(Locale::Ja), "小魔法 (★☆☆☆☆☆)");
+        c.tier = Tier::Ultimate;
+        assert_eq!(c.starred_title(Locale::En), "ultimate spell (★★★★☆☆)");
+        c.forbidden = true;
+        assert_eq!(c.starred_title(Locale::Ja), "超極大魔法（禁呪） (★★★★★☆)");
+        c.sanctify();
+        assert_eq!(c.starred_title(Locale::Ja), "神聖魔法");
+        assert_eq!(Tier::Large.starred(Locale::Ja), "大魔法 (★★★☆☆☆)");
     }
 
     #[test]
