@@ -52,6 +52,7 @@ alias git='maho git'
 | `--share` | Don't run the command; make a post text and image for X and the like |
 | `--locale <ja\|en>` | Use this language for this run |
 | `--setup` | Show settings; with `--locale`, save that language |
+| `--grimoire` | Open the grimoire: see which kinds of circles you've collected |
 
 Options go only before the command. In `maho cargo --explain E0308`, `--explain` belongs to cargo.
 
@@ -116,6 +117,30 @@ circle sits shrunk in the middle, and small circles orbit on the frame's band, u
 The tier comes from the hash too, so a command is always the same tier (`cargo run` is an ultimate spell). Major and ultimate spells
 announce themselves with a line like `✦ ultimate spell` under the circle.
 
+## Grimoire
+
+Every circle you cast is written into a grimoire. `maho --grimoire` shows how much of it you've filled:
+the 38 kinds across tiers, shapes, layouts, ornaments, symmetries, scripts and bands, with the ones you
+haven't met yet hidden as `???`.
+
+```
+✦ Grimoire  17 / 38  ████████░░░░░░░░░░░░  44%
+  3 spells cast, 3 times in all
+
+  tier          2/4  ???, standard spell 2, major spell 1, ???
+  shape        2/12  ???, triangle, ???, ???, ???, ???, nested polygons, ???, ???, ???, ???, ???
+  layout        3/3  classic, grand star, breach
+  ...
+  skeleton    3/144  shape × layout × tier
+```
+
+When a cast fills in something new, a line like `✦ New in the grimoire: major spell / nested polygons`
+appears under the circle. Once all 38 are in, the skeletons (shape × layout × tier, 144 in all) are the
+long game. An ornament only counts when you can see it, so a grand star layout doesn't fill one in.
+
+The grimoire lives at `$XDG_DATA_HOME/maho/grimoire` (or `~/.local/share/maho/grimoire`). It keeps
+only each command's hash and how many times you cast it, never the command itself.
+
 ## How a circle is decided
 
 1. Take the SHA-256 of the command string (the arguments joined with spaces)
@@ -144,6 +169,7 @@ When stderr is not a terminal (for example when redirected), nothing is shown.
 | `MAHO_GRAPHICS=kitty\|iterm\|none` | Skip detection and force a method |
 | `MAHO_ANIMATION=off` | Skip the unfolding animation and show only the finished circle |
 | `MAHO_LOCALE=ja\|en` | Use this language, overriding the config file |
+| `MAHO_GRIMOIRE=off` | Don't write casts into the grimoire |
 
 ## Regenerating the README images
 

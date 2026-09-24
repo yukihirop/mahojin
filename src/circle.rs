@@ -11,7 +11,7 @@ use crate::locale::Locale;
 use crate::script::{Hand, Separator, Style};
 
 /// 魔法陣の中心に据える図形。ハッシュの先頭バイトがそのまま決める。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Shape {
     Circle,
     Triangle,
@@ -28,7 +28,7 @@ pub enum Shape {
 }
 
 impl Shape {
-    const ALL: [Shape; 12] = [
+    pub const ALL: [Shape; 12] = [
         Shape::Circle,
         Shape::Triangle,
         Shape::Hexagram,
@@ -67,7 +67,7 @@ impl Shape {
 }
 
 /// 中心図形の外側を囲む、`symmetry` 回対称の装飾。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Ornament {
     /// 頂点を飛ばして結ぶ星形と、頂点の小円
     Star,
@@ -84,7 +84,7 @@ pub enum Ornament {
 }
 
 impl Ornament {
-    const ALL: [Ornament; 6] = [
+    pub const ALL: [Ornament; 6] = [
         Ornament::Star,
         Ornament::Chain,
         Ornament::Rays,
@@ -106,7 +106,7 @@ impl Ornament {
 }
 
 /// 全体の配置。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Layout {
     /// 中心図形を装飾が囲み、外周にルーン帯がある
     Classic,
@@ -117,6 +117,8 @@ pub enum Layout {
 }
 
 impl Layout {
+    pub const ALL: [Layout; 3] = [Layout::Classic, Layout::Grand, Layout::Breach];
+
     pub fn name(self, l: Locale) -> &'static str {
         match self {
             Layout::Classic => l.pick("標準", "classic"),
@@ -127,7 +129,7 @@ impl Layout {
 }
 
 /// 外周の帯に何を並べるか。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Band {
     /// ルーンの間に点を打つ
     Runes,
@@ -151,7 +153,7 @@ impl Band {
 
 /// 魔法の格。端末に出す魔法陣の大きさが変わる。大きいものほど出にくい。
 /// 極大魔法だけは、種類の違う魔法陣を重ねて描く。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tier {
     Small,
     Medium,
@@ -160,8 +162,7 @@ pub enum Tier {
 }
 
 impl Tier {
-    #[cfg(test)]
-    const ALL: [Tier; 4] = [Tier::Small, Tier::Medium, Tier::Large, Tier::Ultimate];
+    pub const ALL: [Tier; 4] = [Tier::Small, Tier::Medium, Tier::Large, Tier::Ultimate];
 
     /// 百分率で引いた値から格を決める。小 35% / 中 45% / 大 19% / 極大 1%
     fn from_roll(roll: u32) -> Self {
@@ -193,7 +194,7 @@ impl Tier {
     }
 }
 
-const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
+pub const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MagicCircle {
@@ -224,7 +225,11 @@ pub struct MagicCircle {
 
 impl MagicCircle {
     pub fn from_command(command: &str) -> Self {
-        let hash: [u8; 32] = Sha256::digest(command.as_bytes()).into();
+        Self::from_hash(Sha256::digest(command.as_bytes()).into())
+    }
+
+    /// パラメータはすべてハッシュから決まる。図鑑はコマンドを覚えずハッシュだけで引き直す。
+    pub fn from_hash(hash: [u8; 32]) -> Self {
         // 値の導き方は `rand` の分布実装に依存させない。
         // バージョンが上がっても同じコマンドが同じ魔法陣であり続けるため。
         let mut rng = ChaCha8Rng::from_seed(hash);
@@ -242,7 +247,7 @@ impl MagicCircle {
             clockwise: rng.next_u32() & 1 == 0,
             // 後から足したパラメータは必ず末尾で引く。前の値の割り当てが変わらず、
             // それまでの魔法陣のパラメータがそのまま保たれる。
-            layout: [Layout::Classic, Layout::Grand, Layout::Breach][below(&mut rng, 3) as usize],
+            layout: Layout::ALL[below(&mut rng, 3) as usize],
             hand: Hand {
                 style: Style::ALL[below(&mut rng, Style::ALL.len() as u32) as usize],
                 size: 0.7 + unit(&mut rng) * 0.7,

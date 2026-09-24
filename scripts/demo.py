@@ -74,6 +74,8 @@ def capture(spell: str, stub_dir: Path, work: Path) -> tuple[list[Path], int, st
         "HOME": os.environ.get("HOME", "/tmp"),
         # 名乗りは英語で出させる（デモのフォントに日本語が無いことがある）
         "MAHO_LOCALE": "en",
+        # デモで唱えた呪文を図鑑に残さない
+        "MAHO_GRIMOIRE": "off",
     }
     subprocess.run(
         ["script", "-q", str(out), str(MAHO), *shlex.split(spell)],
@@ -167,7 +169,8 @@ def build_gallery(stub_dir: Path, work: Path):
     for spell in GALLERY:
         res = subprocess.run(
             [str(MAHO), "--share", *shlex.split(spell)],
-            cwd=work, env={"PATH": "/usr/bin:/bin", "MAHO_LOCALE": "en", "HOME": "/tmp"},
+            cwd=work, env={"PATH": "/usr/bin:/bin", "MAHO_LOCALE": "en", "MAHO_GRIMOIRE": "off",
+                 "HOME": "/tmp"},
             stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True,
         )
         image = re.search(r"image\s+(\S+)", res.stderr).group(1)

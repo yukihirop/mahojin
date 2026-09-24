@@ -1,4 +1,5 @@
 mod circle;
+mod grimoire;
 mod locale;
 mod render;
 mod script;
@@ -40,11 +41,17 @@ fn usage(l: Locale) -> String {
             "設定を表示する。--locale と一緒なら、その言語を保存する",
             "Show settings; with --locale, save that language",
         ),
+        (
+            "--grimoire",
+            "図鑑を開く。これまでに集めた魔法陣の種類を見る",
+            "Open the grimoire: see which kinds of circles you've collected",
+        ),
     ];
     let mut s = String::from(
         "usage: maho [options] <command> [args...]
        maho [options] \"<shell command>\"
        maho --setup [--locale <ja|en>]
+       maho --grimoire
 ",
     );
     for (flag, ja, en) in lines {
@@ -61,6 +68,7 @@ struct Options {
     explain: bool,
     share: bool,
     setup: bool,
+    grimoire: bool,
     locale: Option<Locale>,
     svg_path: Option<String>,
     command: Vec<String>,
@@ -74,6 +82,7 @@ enum ArgError {
     UnknownOption(String),
     NoCommand,
     SetupWithCommand,
+    GrimoireWithCommand,
 }
 
 impl ArgError {
@@ -106,6 +115,12 @@ impl ArgError {
                     "--setup can't be used with a command",
                 )
                 .into(),
+            ArgError::GrimoireWithCommand => l
+                .pick(
+                    "--grimoire はコマンドと一緒には使えません",
+                    "--grimoire can't be used with a command",
+                )
+                .into(),
         }
     }
 }
@@ -119,6 +134,7 @@ fn parse_args(mut args: std::collections::VecDeque<String>) -> Result<Options, A
             "--explain" => opts.explain = true,
             "--share" => opts.share = true,
             "--setup" => opts.setup = true,
+            "--grimoire" => opts.grimoire = true,
             "--svg" => {
                 args.pop_front();
                 let path = args.front().ok_or(ArgError::MissingValue("--svg"))?;
@@ -140,9 +156,10 @@ fn parse_args(mut args: std::collections::VecDeque<String>) -> Result<Options, A
         args.pop_front();
     }
     opts.command = args.into();
-    match (opts.setup, opts.command.is_empty()) {
-        (true, false) => Err(ArgError::SetupWithCommand),
-        (false, true) => Err(ArgError::NoCommand),
+    match (opts.setup, opts.grimoire, opts.command.is_empty()) {
+        (true, _, false) => Err(ArgError::SetupWithCommand),
+        (_, true, false) => Err(ArgError::GrimoireWithCommand),
+        (false, false, true) => Err(ArgError::NoCommand),
         _ => Ok(opts),
     }
 }
@@ -167,6 +184,10 @@ fn main() -> ExitCode {
     };
     if opts.setup {
         return setup(opts.locale, (l, source), config_path);
+    }
+    let grimoire_path = grimoire::path(env);
+    if opts.grimoire {
+        return open_grimoire(grimoire_path, l);
     }
     let args = &opts.command;
 
@@ -195,6 +216,11 @@ fn main() -> ExitCode {
     } else if drawn && matches!(circle.tier, Tier::Large | Tier::Ultimate) {
         // 出にくい格を引いたときだけ、何が出たかを名乗る
         eprintln!("✦ {}", circle.tier.name(l));
+    }
+    if grimoire::enabled(env)
+        && let Some(path) = &grimoire_path
+    {
+        record(path, &circle, l);
     }
     if let Some(path) = &opts.svg_path {
         if let Err(e) = std::fs::write(path, render::svg(&circle, &spell)) {
@@ -275,6 +301,44 @@ fn share(c: &MagicCircle, spell: &str, l: Locale) -> ExitCode {
         share::intent_url(&post)
     );
     ExitCode::SUCCESS
+}
+
+/// 唱えた魔法陣を図鑑に書き込み、初めて見た項目があれば知らせる。
+/// 図鑑も飾りなので、書けなくても黙ってコマンドを続ける。
+fn record(path: &std::path::Path, c: &MagicCircle, l: Locale) {
+    let Ok(mut g) = grimoire::Grimoire::load(path) else {
+        return;
+    };
+    let new = g.record(c);
+    if g.save(path).is_ok() && !new.is_empty() && std::io::stderr().is_terminal() {
+        eprintln!("{}", grimoire::announce(&new, l));
+    }
+}
+
+fn open_grimoire(path: Option<PathBuf>, l: Locale) -> ExitCode {
+    let Some(path) = path else {
+        eprintln!(
+            "maho: {}",
+            l.pick(
+                "HOME が無いので図鑑の場所が決まりません",
+                "can't find the grimoire: HOME is not set",
+            )
+        );
+        return ExitCode::from(1);
+    };
+    match grimoire::Grimoire::load(&path) {
+        Ok(g) => {
+            print!("{}", grimoire::show(&g, l));
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            match l {
+                Locale::Ja => eprintln!("maho: 図鑑を読めません: {}: {e}", path.display()),
+                Locale::En => eprintln!("maho: can't read the grimoire: {}: {e}", path.display()),
+            }
+            ExitCode::from(1)
+        }
+    }
 }
 
 /// `--setup`: 言語を渡されたら設定ファイルに保存し、無ければ今の設定を見せる。
@@ -442,6 +506,11 @@ mod tests {
         assert_eq!(o.locale, Some(Locale::Ja));
         assert!(parse(&["--setup"]).unwrap().command.is_empty());
         assert_eq!(parse(&["--setup", "ls"]), Err(ArgError::SetupWithCommand));
+        assert!(parse(&["--grimoire"]).unwrap().grimoire);
+        assert_eq!(
+            parse(&["--grimoire", "ls"]),
+            Err(ArgError::GrimoireWithCommand)
+        );
         assert_eq!(
             parse(&["--locale", "fr", "ls"]),
             Err(ArgError::UnknownLocale("fr".into()))

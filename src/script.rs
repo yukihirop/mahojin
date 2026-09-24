@@ -16,7 +16,7 @@ use crate::locale::Locale;
 const ALPHABET_SEED: [u8; 32] = *b"maho: the script of every spell.";
 
 /// 書体。書体ごとに別の字母を持つ。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Style {
     /// 線・曲線・点を混ぜた、最初からある書体
     Runic,
