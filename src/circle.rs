@@ -265,20 +265,25 @@ impl MagicCircle {
         }
     }
 
-    /// 禁呪として封じる。形は変えず、血の色で逆さに回す。
+    /// 禁呪にする。中心の魔法陣の形はハッシュのまま、深紅に染めて逆さに回し、超極大魔法として描く。
     pub fn forbid(&mut self) {
         self.forbidden = true;
         self.hue = FORBIDDEN_HUE;
         self.clockwise = false;
     }
 
-    /// 格の名前。禁呪なら頭にそう付ける。
-    pub fn title(&self, l: Locale) -> String {
-        match (self.forbidden, l) {
-            (false, _) => self.tier.name(l).into(),
-            (true, Locale::Ja) => format!("禁呪・{}", self.tier.name(l)),
-            (true, Locale::En) => format!("forbidden {}", self.tier.name(l)),
+    /// 格の名前。禁呪は引いた格にかかわらず超極大魔法になる。
+    pub fn title(&self, l: Locale) -> &'static str {
+        if self.forbidden {
+            l.pick("超極大魔法", "super ultimate spell")
+        } else {
+            self.tier.name(l)
         }
+    }
+
+    /// 端末に出すときの高さ（行数）。超極大魔法は極大魔法より一回り大きい
+    pub fn rows(&self) -> u32 {
+        if self.forbidden { 44 } else { self.tier.rows() }
     }
 
     pub fn hash_hex(&self) -> String {

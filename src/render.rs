@@ -4,7 +4,7 @@
 //! 同じハッシュから別ストリームの乱数で引く。パラメータ側の値の割り当てを
 //! 変えずに描画の細部だけを足せるようにするため。
 
-use std::f32::consts::{FRAC_1_SQRT_2, TAU};
+use std::f32::consts::TAU;
 use std::fmt::Write;
 
 use rand_chacha::ChaCha8Rng;
@@ -126,6 +126,11 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     };
     particles(&mut s, &mut rng, particles_count, particle_hue);
     let reach = match c.tier {
+        // 禁呪は、引いた格にかかわらず超極大魔法になる
+        _ if c.forbidden => {
+            beyond(&mut s, c, spell, t, &mut rng);
+            BAND_OUTER
+        }
         Tier::Ultimate => {
             ultimate(&mut s, c, spell, t, &mut rng);
             BAND_OUTER
@@ -140,9 +145,6 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
         }
     };
 
-    if c.forbidden {
-        seal(&mut s, reach, &st);
-    }
     if st.flash > 0.0 {
         writeln!(
             s,
@@ -321,11 +323,7 @@ fn ultimate(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &
         body(s, c, spell, t, rng)
     });
 
-    let n = match c.symmetry {
-        4 | 8 => 4,
-        5 => 5,
-        _ => 3,
-    };
+    let n = orbit_count(c);
     for i in 0..n {
         let theta = TAU * i as f32 / n as f32 + c.rotation.to_radians();
         let orbit = companion(c, spell, 1 + i, 240.0);
@@ -337,6 +335,55 @@ fn ultimate(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &
             0.8,
             |s, t| body(s, &orbit, spell, t, &mut companion_rng(&orbit)),
         );
+    }
+}
+
+/// 超極大魔法で、中に据える極大魔法の倍率
+const BEYOND_CENTER: f32 = 0.66;
+/// 超極大魔法で、外枠の帯の上に並ぶ小さな魔法陣の倍率と、中心からの距離
+const BEYOND_ORBIT: f32 = 0.15;
+const BEYOND_ORBIT_R: f32 = 430.0;
+
+/// 超極大魔法（禁呪）。極大魔法をまるごと縮めて中に据え、さらに外枠を敷いて、
+/// その帯の上へ極大魔法の倍の数の小さな魔法陣を並べる。外から順に時間差で展開する。
+fn beyond(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut ChaCha8Rng) {
+    let local = |delay: f32| delayed(t, delay);
+
+    // 極大魔法が使う番号（0〜5）とは別の番号から引いて、中の極大魔法と絵がかぶらないようにする
+    let mut frame = companion(c, spell, 10, 60.0);
+    frame.tier = Tier::Medium;
+    body(s, &frame, spell, local(0.0), &mut companion_rng(&frame));
+
+    // 引いた格が小さくても、中身は極大魔法として組む
+    let core = MagicCircle {
+        tier: Tier::Ultimate,
+        ..c.clone()
+    };
+    placed(s, (0.0, 0.0), BEYOND_CENTER, local(0.1), 0.85, |s, t| {
+        ultimate(s, &core, spell, t, rng)
+    });
+
+    let n = 2 * orbit_count(c);
+    for i in 0..n {
+        let theta = TAU * (i as f32 + 0.5) / n as f32 + c.rotation.to_radians();
+        let orbit = companion(c, spell, 11 + i, 180.0);
+        placed(
+            s,
+            polar(BEYOND_ORBIT_R, theta),
+            BEYOND_ORBIT,
+            local(0.35 + 0.03 * i as f32),
+            0.85,
+            |s, t| body(s, &orbit, spell, t, &mut companion_rng(&orbit)),
+        );
+    }
+}
+
+/// 極大魔法で周りを回る魔法陣の数。対称性に合わせる
+fn orbit_count(c: &MagicCircle) -> u8 {
+    match c.symmetry {
+        4 | 8 => 4,
+        5 => 5,
+        _ => 3,
     }
 }
 
@@ -951,34 +998,6 @@ fn polygon(s: &mut String, n: u8, r: f32, offset: f32, width: f32) {
     .unwrap();
 }
 
-/// 禁呪の封印。外周を鎖のような破線で囲み、最後に斜めの一線で封じる（禁止の標識の形）。
-fn seal(s: &mut String, reach: f32, st: &Stages) {
-    let r = reach + 16.0;
-    writeln!(
-        s,
-        r#"<g fill="none" stroke="hsl({FORBIDDEN_HUE:.0},95%,55%)" stroke-linecap="round" filter="url(#glow)">"#
-    )
-    .unwrap();
-    writeln!(
-        s,
-        r#"<circle r="{r:.1}" stroke-width="7" stroke-dasharray="26 14" opacity="{:.3}"/>"#,
-        st.band
-    )
-    .unwrap();
-    // 中心図形が現れるのに合わせて、左上から右下へ引いていく
-    if st.core > 0.0 {
-        let k = r * FRAC_1_SQRT_2;
-        let end = -k + 2.0 * k * st.core;
-        writeln!(
-            s,
-            r#"<line x1="{:.1}" y1="{:.1}" x2="{end:.1}" y2="{end:.1}" stroke-width="16" opacity="0.85"/>"#,
-            -k, -k
-        )
-        .unwrap();
-    }
-    s.push_str("</g>\n");
-}
-
 /// 魔法陣の周りに漂う光の粒。
 fn particles(s: &mut String, rng: &mut ChaCha8Rng, count: u16, hue: f32) {
     writeln!(s, r#"<g fill="hsl({hue:.0},90%,80%)">"#).unwrap();
@@ -1004,16 +1023,29 @@ mod tests {
     const RUNE: &str = r#"<path class="rune""#;
 
     #[test]
-    fn forbidden_spells_are_sealed() {
-        let mut c = MagicCircle::from_command("rm -rf x");
-        let plain = svg(&c, "rm -rf x");
-        c.forbid();
-        let sealed = svg(&c, "rm -rf x");
-        let seal = r#"stroke-width="16""#;
-        assert!(sealed.contains(seal) && !plain.contains(seal));
-        assert!(sealed.contains(&format!("hsl({FORBIDDEN_HUE:.0},")));
-        // 斜線は中心図形と一緒に現れる。展開の最初のコマにはまだ無い
-        assert!(!frame(&c, "rm -rf x", 0.05).contains(seal));
+    fn forbidden_spells_go_beyond_ultimate() {
+        let placements = |svg: &str| svg.matches(r#"<g transform="translate("#).count();
+        let (c, spell) = (0..)
+            .map(|i| format!("rm -rf dir{i}"))
+            .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
+            .find(|(c, _)| c.tier == Tier::Ultimate)
+            .unwrap();
+        let ultimate = svg(&c, &spell);
+        let mut sealed = c.clone();
+        sealed.forbid();
+        let beyond = svg(&sealed, &spell);
+        // 極大魔法をまるごと中に抱え、その外に倍の数の魔法陣を並べる
+        let n = orbit_count(&c) as usize;
+        assert_eq!(placements(&ultimate), 1 + n);
+        assert_eq!(placements(&beyond), 1 + (1 + n) + 2 * n);
+        assert!(beyond.contains(&format!("hsl({FORBIDDEN_HUE:.0},")));
+        // 引いた格が小さくても、禁呪なら超極大魔法として描く
+        let mut small = MagicCircle::from_command("ls");
+        small.forbid();
+        assert_eq!(
+            placements(&svg(&small, "ls")),
+            1 + (1 + orbit_count(&small) as usize) + 2 * orbit_count(&small) as usize
+        );
     }
 
     /// 帯が `band` の魔法陣になるコマンド

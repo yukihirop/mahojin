@@ -264,7 +264,7 @@ fn main() -> ExitCode {
     // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
     let target = terminal::detect(|k| std::env::var(k).ok(), terminal::ask_tmux);
     let frames = animation(&circle, &spell);
-    let drawn = match terminal::play(&frames, FRAME_INTERVAL, target, circle.tier.rows()) {
+    let drawn = match terminal::play(&frames, FRAME_INTERVAL, target, circle.rows()) {
         Ok(drawn) => drawn,
         Err(e) => {
             match l {
@@ -491,7 +491,7 @@ fn setup(
 
 fn unfolded(spell: &str, c: &MagicCircle, l: Locale) -> String {
     let what = if c.forbidden {
-        l.pick("禁呪展開", "Forbidden circle unfolded")
+        l.pick("超極大魔法展開", "Super ultimate circle unfolded")
     } else {
         l.pick("魔法陣展開", "Magic circle unfolded")
     };

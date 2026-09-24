@@ -164,8 +164,9 @@ The tier comes from the hash too, so the same spell is the same tier no matter h
 Arguments are part of the spell, though, so different arguments can mean a different tier. Major and
 ultimate spells announce themselves with a line like `✦ ultimate spell` under the circle.
 
-Apart from the tier, spells you can't take back bear the mark of a forbidden spell. Which ones, we won't
-say. Watch the colour of the circle before you cast; it won't stop you.
+There is one more tier that isn't in the table, and no amount of luck will draw it. It only appears when
+you cast a spell you can't take back. Which spells, we won't say. The circle won't stop you, so think
+before you cast.
 
 ## Grimoire
 
