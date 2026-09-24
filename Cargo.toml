@@ -1,6 +1,6 @@
 [package]
 name = "mahojin"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Cast your everyday commands as spells: a magic circle unfolds in your terminal before each one runs"
 license = "MIT"
