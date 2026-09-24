@@ -217,7 +217,10 @@ mod tests {
 
     #[test]
     fn rasterizes_to_png() {
-        let svg = crate::render::svg(&crate::circle::MagicCircle::from_command("git status"));
+        let svg = crate::render::svg(
+            &crate::circle::MagicCircle::from_command("git status"),
+            "git status",
+        );
         let png = rasterize(&svg).unwrap();
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
     }

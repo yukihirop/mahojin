@@ -80,12 +80,32 @@ impl Ornament {
     }
 }
 
+/// 全体の配置。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layout {
+    /// 中心図形を装飾が囲み、外周にルーン帯がある
+    Classic,
+    /// 星が魔法陣いっぱいに広がり、頂点の円が外周の帯に重なる
+    Grand,
+}
+
+impl Layout {
+    pub fn name(self) -> &'static str {
+        match self {
+            Layout::Classic => "標準",
+            Layout::Grand => "大星",
+        }
+    }
+}
+
 const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MagicCircle {
     pub hash: [u8; 32],
+    pub layout: Layout,
     pub shape: Shape,
+    /// `Layout::Classic` のときだけ描かれる。`Grand` では大きな星が代わりを務める
     pub ornament: Ornament,
     /// 同心円の数 (3..=7)。外周のルーン帯の 2 本を含むので、内側には 1〜5 本
     pub rings: u8,
@@ -121,6 +141,13 @@ impl MagicCircle {
             particles: below(&mut rng, 501) as u16,
             hue: unit(&mut rng) * 360.0,
             clockwise: rng.next_u32() & 1 == 0,
+            // 後から足したパラメータは必ず末尾で引く。前の値の割り当てが変わらず、
+            // それまでの魔法陣のパラメータがそのまま保たれる。
+            layout: if rng.next_u32() & 1 == 0 {
+                Layout::Classic
+            } else {
+                Layout::Grand
+            },
         }
     }
 
@@ -180,6 +207,8 @@ mod tests {
         for shape in Shape::ALL {
             assert!(circles.iter().any(|c| c.shape == shape), "{shape:?}");
         }
+        assert!(circles.iter().any(|c| c.layout == Layout::Classic));
+        assert!(circles.iter().any(|c| c.layout == Layout::Grand));
         for ornament in Ornament::ALL {
             assert!(
                 circles.iter().any(|c| c.ornament == ornament),
@@ -196,6 +225,7 @@ mod tests {
         assert_eq!(c.hash_hex(), GOLDEN_HASH);
         assert_eq!(
             (
+                c.layout,
                 c.shape,
                 c.ornament,
                 c.rings,
@@ -209,6 +239,14 @@ mod tests {
     }
 
     const GOLDEN_HASH: &str = "e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6";
-    const GOLDEN_PARAMS: (Shape, Ornament, u8, u8, u8, u16, bool) =
-        (Shape::Petals, Ornament::Star, 5, 3, 27, 398, true);
+    const GOLDEN_PARAMS: (Layout, Shape, Ornament, u8, u8, u8, u16, bool) = (
+        Layout::Grand,
+        Shape::Petals,
+        Ornament::Star,
+        5,
+        3,
+        27,
+        398,
+        true,
+    );
 }

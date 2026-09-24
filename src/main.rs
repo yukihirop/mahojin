@@ -1,5 +1,6 @@
 mod circle;
 mod render;
+mod script;
 mod terminal;
 
 use std::io::IsTerminal;
@@ -65,7 +66,7 @@ fn main() -> ExitCode {
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
     // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
     let protocol = terminal::detect(|k| std::env::var(k).ok());
-    let drawn = match terminal::play(&animation(&circle), FRAME_INTERVAL, protocol) {
+    let drawn = match terminal::play(&animation(&circle, &spell), FRAME_INTERVAL, protocol) {
         Ok(drawn) => drawn,
         Err(e) => {
             eprintln!("maho: 魔法陣を描けません: {e}");
@@ -79,7 +80,7 @@ fn main() -> ExitCode {
         eprintln!("✦ 魔法陣展開: {spell}");
     }
     if let Some(path) = &opts.svg_path {
-        if let Err(e) = std::fs::write(path, render::svg(&circle)) {
+        if let Err(e) = std::fs::write(path, render::svg(&circle, &spell)) {
             eprintln!("maho: 魔法陣を書き出せません: {path}: {e}");
             return ExitCode::from(1);
         }
@@ -117,12 +118,12 @@ const FRAMES: u32 = 16;
 const FRAME_INTERVAL: Duration = Duration::from_millis(45);
 
 /// `MAHO_ANIMATION=off` なら完成図 1 枚だけにする。
-fn animation(c: &MagicCircle) -> Vec<String> {
+fn animation(c: &MagicCircle, spell: &str) -> Vec<String> {
     if std::env::var("MAHO_ANIMATION").as_deref() == Ok("off") {
-        return vec![render::frame(c, 1.0)];
+        return vec![render::frame(c, spell, 1.0)];
     }
     (1..=FRAMES)
-        .map(|i| render::frame(c, i as f32 / FRAMES as f32))
+        .map(|i| render::frame(c, spell, i as f32 / FRAMES as f32))
         .collect()
 }
 
@@ -130,7 +131,8 @@ fn explain(spell: &str, c: &MagicCircle) {
     eprintln!("✦ 魔法陣展開: {spell}");
     eprintln!("  hash      {}", c.hash_hex());
     eprintln!(
-        "  shape {}  ornament {}  rings {}  symmetry {}  runes {}  particles {}",
+        "  layout {}  shape {}  ornament {}  rings {}  symmetry {}  runes {}  particles {}",
+        c.layout.name(),
         c.shape.name(),
         c.ornament.name(),
         c.rings,

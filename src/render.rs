@@ -10,7 +10,8 @@ use std::fmt::Write;
 use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 
-use crate::circle::{MagicCircle, Ornament, Shape, unit};
+use crate::circle::{Layout, MagicCircle, Ornament, Shape, unit};
+use crate::script;
 
 const SIZE: f32 = 1000.0;
 /// ルーン帯の外周と内周
@@ -23,16 +24,22 @@ const RINGS_INNER: f32 = 220.0;
 const ORNAMENT: f32 = 300.0;
 /// 中心図形の外接半径
 const CORE: f32 = 190.0;
+/// コマンドを書く文字の帯の半径。外側はルーン帯のすぐ内、内側は中心図形のすぐ外
+const TEXT_OUTER: f32 = 387.0;
+const TEXT_INNER: f32 = 205.0;
+/// 大きな星の頂点に置く円の半径。中心はルーン帯の上に来る
+const GRAND_VERTEX: f32 = 46.0;
+const BACKGROUND: &str = "#07070f";
 
 /// 完成した魔法陣。ブラウザで開くと SMIL で回り続ける。
-pub fn svg(c: &MagicCircle) -> String {
-    draw(c, None)
+pub fn svg(c: &MagicCircle, spell: &str) -> String {
+    draw(c, spell, None)
 }
 
 /// 展開アニメーションの 1 コマ。`t` は 0.0（何も無い）〜 1.0（完成）。
 /// 最後のコマは `svg` の初期状態と同じ絵になる。
-pub fn frame(c: &MagicCircle, t: f32) -> String {
-    draw(c, Some(t.clamp(0.0, 1.0)))
+pub fn frame(c: &MagicCircle, spell: &str, t: f32) -> String {
+    draw(c, spell, Some(t.clamp(0.0, 1.0)))
 }
 
 /// 展開の段取り。各要素が現れる区間を `t` の上で重ねてずらす。
@@ -76,7 +83,7 @@ fn ease(x: f32) -> f32 {
     1.0 - (1.0 - x).powi(3)
 }
 
-fn draw(c: &MagicCircle, t: Option<f32>) -> String {
+fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     let mut rng = ChaCha8Rng::from_seed(c.hash);
     rng.set_stream(1);
     let st = Stages::at(t);
@@ -96,13 +103,13 @@ fn draw(c: &MagicCircle, t: Option<f32>) -> String {
     .unwrap();
     writeln!(
         s,
-        r#"<defs><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="{:.1}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>"#,
+        r#"<defs><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="{:.1}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>{DOUBLE}</defs>"#,
         5.0 + 14.0 * st.flash
     )
     .unwrap();
     writeln!(
         s,
-        r##"<rect x="{}" y="{}" width="{SIZE}" height="{SIZE}" fill="#07070f"/>"##,
+        r#"<rect x="{}" y="{}" width="{SIZE}" height="{SIZE}" fill="{BACKGROUND}"/>"#,
         -h, -h
     )
     .unwrap();
@@ -127,15 +134,20 @@ fn draw(c: &MagicCircle, t: Option<f32>) -> String {
         dir * 360.0,
         90,
     );
+    open_double(&mut s);
     drawn_circle(&mut s, BAND_OUTER, 4.0, st.band);
     drawn_circle(&mut s, BAND_INNER, 2.5, st.band);
+    s.push_str("</g>\n");
     let visible = (c.runes as f32 * st.runes).ceil() as u8;
     runes(&mut s, &mut rng, c.runes, visible);
     s.push_str("</g>\n");
 
     if st.rings > 0.0 {
         open_fade(&mut s, st.rings);
+        open_double(&mut s);
         inner_rings(&mut s, c.rings, &sub);
+        s.push_str("</g>\n");
+        script::ring(&mut s, spell, TEXT_OUTER, 10.0, st.rings);
         s.push_str("</g>\n");
     }
 
@@ -148,13 +160,23 @@ fn draw(c: &MagicCircle, t: Option<f32>) -> String {
             -dir * 360.0,
             45,
         );
-        ornament(&mut s, c.ornament, c.symmetry, &sub);
+        match c.layout {
+            Layout::Classic => {
+                open_double(&mut s);
+                ornament(&mut s, c.ornament, c.symmetry, &sub);
+                s.push_str("</g>\n");
+            }
+            Layout::Grand => grand_star(&mut s, c.symmetry, spell, &main),
+        }
         s.push_str("</g>\n");
     }
 
     if st.core > 0.0 {
         open_fade(&mut s, st.core);
+        open_double(&mut s);
         core(&mut s, c.shape, c.symmetry);
+        s.push_str("</g>\n");
+        script::ring(&mut s, spell, TEXT_INNER, 7.0, st.core);
         s.push_str("</g>\n");
     }
 
@@ -169,6 +191,73 @@ fn draw(c: &MagicCircle, t: Option<f32>) -> String {
     }
     s.push_str("</svg>\n");
     s
+}
+
+/// 線を平行な 2 本に割るフィルタ。線を少しと大きめに膨らませ、大きい方から小さい方を
+/// くり抜いて両縁だけ残す。半径は viewBox の単位で、2 本の間隔は「元の線幅 + 3」、
+/// 1 本の太さは 2。間隔を線より広く取らないと、光のにじみで 1 本に潰れて見える。
+const DOUBLE: &str = r#"<filter id="double" x="-10%" y="-10%" width="120%" height="120%"><feMorphology in="SourceGraphic" operator="dilate" radius="1.5" result="core"/><feMorphology in="SourceGraphic" operator="dilate" radius="3.5" result="wide"/><feComposite in="wide" in2="core" operator="out"/></filter>"#;
+
+fn open_double(s: &mut String) {
+    s.push_str("<g filter=\"url(#double)\">\n");
+}
+
+/// 魔法陣いっぱいに広がる星。頂点はルーン帯に届き、そこに背景色で塗った円を置いて
+/// 帯の上に乗っているように見せる。星の内側にできる多角形には内接円を引く。
+fn grand_star(s: &mut String, n: u8, spell: &str, color: &str) {
+    let r = BAND_INNER;
+    let pts: Vec<(f32, f32)> = (0..n)
+        .map(|i| polar(r, TAU * i as f32 / n as f32))
+        .collect();
+    open_double(s);
+    writeln!(s, r#"<g stroke="{color}">"#).unwrap();
+    // 星の内側の多角形の頂点までの距離
+    let inner = if n <= 4 {
+        // 3 と 4 は同じ多角形を半歩ずらして重ね、六芒星・八芒星にする
+        polygon(s, n, r, 0.0, 3.5);
+        polygon(s, n, r, TAU / (2 * n) as f32, 3.5);
+        r * (TAU / (2 * n) as f32).cos() / (TAU / (4 * n) as f32).cos()
+    } else {
+        let n = n as usize;
+        let step = n / 2 - n.is_multiple_of(2) as usize;
+        for i in 0..n {
+            line(s, pts[i], pts[(i + step) % n], 3.5);
+        }
+        let k = step as f32;
+        r * (TAU * k / (2 * n) as f32).cos() / (TAU * (k - 1.0) / (2 * n) as f32).cos()
+    };
+    // 内側の多角形の辺に接する円
+    circle(s, inner * (TAU / (4 * n) as f32).cos(), 2.0);
+    s.push_str("</g>\n</g>\n");
+
+    // 頂点の円は二重線にせず、中を塗ってルーンを隠す。
+    // 中にはコマンドの文字を頭から 1 字ずつ書く（空白は飛ばす）。
+    let mut letters = spell.bytes().filter(|b| *b != b' ').cycle();
+    writeln!(s, r#"<g stroke="{color}" fill="{BACKGROUND}">"#).unwrap();
+    for (i, &(x, y)) in pts.iter().enumerate() {
+        writeln!(
+            s,
+            r#"<circle cx="{x:.2}" cy="{y:.2}" r="{GRAND_VERTEX}" stroke-width="3"/>"#
+        )
+        .unwrap();
+        writeln!(
+            s,
+            r#"<circle cx="{x:.2}" cy="{y:.2}" r="{:.1}" stroke-width="1.5"/>"#,
+            GRAND_VERTEX * 0.72
+        )
+        .unwrap();
+        if let Some(b) = letters.next() {
+            // 字の上が外を向くよう、頂点の向きに回す
+            writeln!(
+                s,
+                r#"<path d="{}" fill="none" stroke-width="2.5" transform="translate({x:.2} {y:.2}) rotate({:.2})"/>"#,
+                script::glyph_d(b, 11.0, 18.0),
+                360.0 * i as f32 / n as f32
+            )
+            .unwrap();
+        }
+    }
+    s.push_str("</g>\n");
 }
 
 /// 回転する層を開く。完成図なら SMIL で回し続け、コマなら `angle` だけ回して
@@ -272,7 +361,7 @@ fn runes(s: &mut String, rng: &mut ChaCha8Rng, count: u8, visible: u8) {
         }
         writeln!(
             s,
-            r#"<path d="{d}" transform="translate({x:.2} {y:.2}) rotate({:.2})"/>"#,
+            r#"<path class="rune" d="{d}" transform="translate({x:.2} {y:.2}) rotate({:.2})"/>"#,
             theta.to_degrees()
         )
         .unwrap();
@@ -482,7 +571,7 @@ fn core(s: &mut String, shape: Shape, symmetry: u8) {
         }
         Shape::Metatron => {
             // メタトロンの立方体: 中心・内側 6・外側 6 の 13 個の円と、その中心同士を結ぶ線
-            let d = CORE / 2.2;
+            let d = CORE / 2.5;
             let mut pts = vec![(0.0, 0.0)];
             pts.extend((0..6).map(|i| at(d, i, 6)));
             pts.extend((0..6).map(|i| at(d * 2.0, i, 6)));
@@ -549,49 +638,46 @@ fn particles(s: &mut String, rng: &mut ChaCha8Rng, count: u16, hue: f32) {
 mod tests {
     use super::*;
 
-    /// ルーンだけが `translate(...) rotate(...)` 付きの path で描かれる
-    const RUNE: &str = r#"" transform="translate("#;
+    const RUNE: &str = r#"<path class="rune""#;
 
     #[test]
     fn same_command_same_svg() {
-        let a = svg(&MagicCircle::from_command("cargo build"));
-        let b = svg(&MagicCircle::from_command("cargo build"));
+        let a = svg(&MagicCircle::from_command("cargo build"), "cargo build");
+        let b = svg(&MagicCircle::from_command("cargo build"), "cargo build");
         assert_eq!(a, b);
     }
 
     #[test]
     fn different_command_different_svg() {
         assert_ne!(
-            svg(&MagicCircle::from_command("git push")),
-            svg(&MagicCircle::from_command("git pull"))
+            svg(&MagicCircle::from_command("git push"), "git push"),
+            svg(&MagicCircle::from_command("git pull"), "git pull")
         );
     }
 
     #[test]
     fn frames_build_up_to_the_full_circle() {
         let c = MagicCircle::from_command("git status");
-        assert_eq!(frame(&c, 0.0).matches(RUNE).count(), 0);
-        assert_eq!(frame(&c, 1.0).matches(RUNE).count(), c.runes as usize);
+        assert_eq!(frame(&c, "git status", 0.0).matches(RUNE).count(), 0);
+        assert_eq!(
+            frame(&c, "git status", 1.0).matches(RUNE).count(),
+            c.runes as usize
+        );
         // 途中のコマでも字形は完成図と同じものが先頭から並ぶ
-        let half = frame(&c, 0.4);
-        let full = frame(&c, 1.0);
-        let first_rune = |s: &str| {
-            s.split(RUNE)
-                .next()
-                .and_then(|p| p.rsplit("<path ").next())
-                .map(str::to_string)
-        };
+        let half = frame(&c, "git status", 0.4);
+        let full = frame(&c, "git status", 1.0);
+        let first_rune = |s: &str| s.split(RUNE).nth(1).map(|p| p[..60].to_string());
         assert_eq!(first_rune(&half), first_rune(&full));
         // 光りは完成の直前にだけ出て、完成のコマでは収まっている
         let flash = |s: &str| s.contains(&format!(r#"<circle r="{BAND_OUTER}" fill="#));
-        assert!(flash(&frame(&c, 0.9)));
+        assert!(flash(&frame(&c, "git status", 0.9)));
         assert!(!flash(&full));
     }
 
     #[test]
     fn draws_every_rune_and_particle() {
         let c = MagicCircle::from_command("git status");
-        let out = svg(&c);
+        let out = svg(&c, "git status");
         assert!(out.starts_with("<svg"));
         assert!(out.trim_end().ends_with("</svg>"));
         assert_eq!(out.matches(RUNE).count(), c.runes as usize);
