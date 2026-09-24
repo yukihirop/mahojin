@@ -14,8 +14,8 @@ macOS（Apple Silicon / Intel）と Linux（x86_64 / aarch64）のビルド済�
 [Releases](https://github.com/yukihirop/mahojin/releases) にあります。展開して、`mahojin` を `PATH` の通った場所に置いてください。
 
 ```sh
-tar xzf mahojin-v0.1.0-aarch64-apple-darwin.tar.gz
-mv mahojin-v0.1.0-aarch64-apple-darwin/mahojin ~/.local/bin/
+tar xzf mahojin-v0.1.1-aarch64-apple-darwin.tar.gz
+mv mahojin-v0.1.1-aarch64-apple-darwin/mahojin ~/.local/bin/
 ```
 
 macOS のバイナリには署名をしていません。ブラウザで落としたものが開けないと言われたら、

@@ -14,8 +14,8 @@ Or download a prebuilt binary for macOS (Apple Silicon / Intel) or Linux (x86_64
 [Releases](https://github.com/yukihirop/mahojin/releases), and put `mahojin` somewhere on your `PATH`.
 
 ```sh
-tar xzf mahojin-v0.1.0-aarch64-apple-darwin.tar.gz
-mv mahojin-v0.1.0-aarch64-apple-darwin/mahojin ~/.local/bin/
+tar xzf mahojin-v0.1.1-aarch64-apple-darwin.tar.gz
+mv mahojin-v0.1.1-aarch64-apple-darwin/mahojin ~/.local/bin/
 ```
 
 The macOS binaries are not signed. If macOS refuses to open one you downloaded in a browser,
