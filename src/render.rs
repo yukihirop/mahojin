@@ -24,14 +24,67 @@ const ORNAMENT: f32 = 300.0;
 /// 中心図形の外接半径
 const CORE: f32 = 190.0;
 
+/// 完成した魔法陣。ブラウザで開くと SMIL で回り続ける。
 pub fn svg(c: &MagicCircle) -> String {
+    draw(c, None)
+}
+
+/// 展開アニメーションの 1 コマ。`t` は 0.0（何も無い）〜 1.0（完成）。
+/// 最後のコマは `svg` の初期状態と同じ絵になる。
+pub fn frame(c: &MagicCircle, t: f32) -> String {
+    draw(c, Some(t.clamp(0.0, 1.0)))
+}
+
+/// 展開の段取り。各要素が現れる区間を `t` の上で重ねてずらす。
+struct Stages {
+    band: f32,
+    runes: f32,
+    rings: f32,
+    ornament: f32,
+    core: f32,
+    /// 完成の直前に一瞬だけ強く光る
+    flash: f32,
+}
+
+impl Stages {
+    fn at(t: Option<f32>) -> Self {
+        let Some(t) = t else {
+            return Stages {
+                band: 1.0,
+                runes: 1.0,
+                rings: 1.0,
+                ornament: 1.0,
+                core: 1.0,
+                flash: 0.0,
+            };
+        };
+        let span = |a: f32, b: f32| ease(((t - a) / (b - a)).clamp(0.0, 1.0));
+        Stages {
+            band: span(0.0, 0.35),
+            runes: span(0.15, 0.55),
+            rings: span(0.3, 0.65),
+            ornament: span(0.4, 0.75),
+            core: span(0.55, 0.85),
+            // 0.8 から立ち上がり 0.9 で頂点、1.0 で消える三角波
+            flash: (1.0 - ((t - 0.9) / 0.1).abs()).max(0.0),
+        }
+    }
+}
+
+/// ease-out cubic。勢いよく出て、すっと収まる。
+fn ease(x: f32) -> f32 {
+    1.0 - (1.0 - x).powi(3)
+}
+
+fn draw(c: &MagicCircle, t: Option<f32>) -> String {
     let mut rng = ChaCha8Rng::from_seed(c.hash);
     rng.set_stream(1);
+    let st = Stages::at(t);
 
     let hue = c.hue;
     let main = format!("hsl({hue:.0},85%,65%)");
     let sub = format!("hsl({:.0},80%,55%)", (hue + 35.0) % 360.0);
-    let spin = if c.clockwise { 360 } else { -360 };
+    let dir = if c.clockwise { 1.0 } else { -1.0 };
 
     let mut s = String::new();
     let h = SIZE / 2.0;
@@ -43,7 +96,8 @@ pub fn svg(c: &MagicCircle) -> String {
     .unwrap();
     writeln!(
         s,
-        r#"<defs><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>"#
+        r#"<defs><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="{:.1}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>"#,
+        5.0 + 14.0 * st.flash
     )
     .unwrap();
     writeln!(
@@ -63,29 +117,102 @@ pub fn svg(c: &MagicCircle) -> String {
     .unwrap();
 
     // 外周のルーン帯はゆっくり、内側の装飾は逆向きに速く回す。
-    // SMIL なのでブラウザでは動き、静止画に落とすと初期角で止まる。
-    open_spin(&mut s, spin, 90);
-    circle(&mut s, BAND_OUTER, 4.0);
-    circle(&mut s, BAND_INNER, 2.5);
-    runes(&mut s, &mut rng, c.runes);
+    // 完成図では SMIL で回し続け（静止画に落とすと初期角で止まる）、
+    // アニメーションのコマでは回りながら定位置へ収まっていく。
+    open_layer(
+        &mut s,
+        t,
+        st.band,
+        dir * 150.0 * (1.0 - st.band),
+        dir * 360.0,
+        90,
+    );
+    drawn_circle(&mut s, BAND_OUTER, 4.0, st.band);
+    drawn_circle(&mut s, BAND_INNER, 2.5, st.band);
+    let visible = (c.runes as f32 * st.runes).ceil() as u8;
+    runes(&mut s, &mut rng, c.runes, visible);
     s.push_str("</g>\n");
 
-    inner_rings(&mut s, c.rings, &sub);
+    if st.rings > 0.0 {
+        open_fade(&mut s, st.rings);
+        inner_rings(&mut s, c.rings, &sub);
+        s.push_str("</g>\n");
+    }
 
-    open_spin(&mut s, -spin, 45);
-    ornament(&mut s, c.symmetry, &sub);
+    if st.ornament > 0.0 {
+        open_layer(
+            &mut s,
+            t,
+            st.ornament,
+            -dir * 240.0 * (1.0 - st.ornament),
+            -dir * 360.0,
+            45,
+        );
+        ornament(&mut s, c.symmetry, &sub);
+        s.push_str("</g>\n");
+    }
+
+    if st.core > 0.0 {
+        open_fade(&mut s, st.core);
+        core(&mut s, c.shape, c.symmetry);
+        s.push_str("</g>\n");
+    }
+
     s.push_str("</g>\n");
-
-    core(&mut s, c.shape, c.symmetry);
-
-    s.push_str("</g>\n</svg>\n");
+    if st.flash > 0.0 {
+        writeln!(
+            s,
+            r#"<circle r="{BAND_OUTER}" fill="{main}" opacity="{:.3}"/>"#,
+            0.18 * st.flash
+        )
+        .unwrap();
+    }
+    s.push_str("</svg>\n");
     s
 }
 
-fn open_spin(s: &mut String, degrees: i32, seconds: u32) {
+/// 回転する層を開く。完成図なら SMIL で回し続け、コマなら `angle` だけ回して
+/// 中心から広がりながら現れる。
+fn open_layer(s: &mut String, t: Option<f32>, p: f32, angle: f32, spin: f32, seconds: u32) {
+    match t {
+        None => writeln!(
+            s,
+            r#"<g><animateTransform attributeName="transform" type="rotate" from="0" to="{spin}" dur="{seconds}s" repeatCount="indefinite"/>"#
+        )
+        .unwrap(),
+        Some(_) => writeln!(
+            s,
+            r#"<g opacity="{p:.3}" transform="rotate({angle:.2}) scale({:.3})">"#,
+            0.6 + 0.4 * p
+        )
+        .unwrap(),
+    }
+}
+
+/// 中心から膨らみながらフェードインする層を開く。
+fn open_fade(s: &mut String, p: f32) {
+    if p >= 1.0 {
+        return s.push_str("<g>\n");
+    }
     writeln!(
         s,
-        r#"<g><animateTransform attributeName="transform" type="rotate" from="0" to="{degrees}" dur="{seconds}s" repeatCount="indefinite"/>"#
+        r#"<g opacity="{p:.3}" transform="scale({:.3})">"#,
+        0.8 + 0.2 * p
+    )
+    .unwrap();
+}
+
+/// 円周を `p` の割合だけ描く。1.0 なら普通の円。
+fn drawn_circle(s: &mut String, r: f32, width: f32, p: f32) {
+    if p >= 1.0 {
+        return circle(s, r, width);
+    }
+    let len = TAU * r;
+    // 円周は 3 時の位置から描かれるので、-90° 回して真上から描き始める
+    writeln!(
+        s,
+        r#"<circle r="{r:.2}" stroke-width="{width}" stroke-dasharray="{len:.1} {len:.1}" stroke-dashoffset="{:.1}" transform="rotate(-90)"/>"#,
+        len * (1.0 - p)
     )
     .unwrap();
 }
@@ -99,9 +226,10 @@ fn polar(r: f32, theta: f32) -> (f32, f32) {
     (r * theta.sin(), -r * theta.cos())
 }
 
-/// ルーン帯に `count` 個の字形を等間隔で並べる。
+/// ルーン帯に `count` 個の字形を等間隔で並べ、先頭から `visible` 個だけ描く。
 /// 字形は 3×3 の格子上の縦棒 1 本と、乱数で選んだ 1〜3 本の画でできている。
-fn runes(s: &mut String, rng: &mut ChaCha8Rng, count: u8) {
+/// 描かない字形も乱数は引く。コマによって字形が変わらないようにするため。
+fn runes(s: &mut String, rng: &mut ChaCha8Rng, count: u8, visible: u8) {
     const GRID: [(f32, f32); 9] = [
         (-1.0, -1.0),
         (0.0, -1.0),
@@ -138,6 +266,9 @@ fn runes(s: &mut String, rng: &mut ChaCha8Rng, count: u8) {
                 b.1 * hh
             )
             .unwrap();
+        }
+        if i >= visible {
+            continue;
         }
         writeln!(
             s,
@@ -294,6 +425,22 @@ mod tests {
             svg(&MagicCircle::from_command("git push")),
             svg(&MagicCircle::from_command("git pull"))
         );
+    }
+
+    #[test]
+    fn frames_build_up_to_the_full_circle() {
+        let c = MagicCircle::from_command("git status");
+        assert_eq!(frame(&c, 0.0).matches("<path ").count(), 0);
+        assert_eq!(frame(&c, 1.0).matches("<path ").count(), c.runes as usize);
+        // 途中のコマでも字形は完成図と同じものが先頭から並ぶ
+        let half = frame(&c, 0.4);
+        let full = frame(&c, 1.0);
+        let first_rune = |s: &str| s.split("<path ").nth(1).map(|p| p[..40].to_string());
+        assert_eq!(first_rune(&half), first_rune(&full));
+        // 光りは完成の直前にだけ出て、完成のコマでは収まっている
+        let flash = |s: &str| s.contains(&format!(r#"<circle r="{BAND_OUTER}" fill="#));
+        assert!(flash(&frame(&c, 0.9)));
+        assert!(!flash(&full));
     }
 
     #[test]

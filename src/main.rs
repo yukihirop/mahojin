@@ -3,6 +3,7 @@ mod render;
 mod terminal;
 
 use std::process::{Command, ExitCode};
+use std::time::Duration;
 
 use circle::MagicCircle;
 
@@ -31,7 +32,7 @@ fn main() -> ExitCode {
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
     // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
     let protocol = terminal::detect(|k| std::env::var(k).ok());
-    if let Err(e) = terminal::show(&svg, protocol) {
+    if let Err(e) = terminal::play(&animation(&circle), FRAME_INTERVAL, protocol) {
         eprintln!("maho: 魔法陣を描けません: {e}");
     }
     announce(&spell, &circle);
@@ -65,6 +66,20 @@ fn main() -> ExitCode {
             })
         }
     }
+}
+
+/// 展開アニメーションのコマ数と間隔。合わせて 0.7 秒ほどで、待たされる感じを出さない。
+const FRAMES: u32 = 16;
+const FRAME_INTERVAL: Duration = Duration::from_millis(45);
+
+/// `MAHO_ANIMATION=off` なら完成図 1 枚だけにする。
+fn animation(c: &MagicCircle) -> Vec<String> {
+    if std::env::var("MAHO_ANIMATION").as_deref() == Ok("off") {
+        return vec![render::frame(c, 1.0)];
+    }
+    (1..=FRAMES)
+        .map(|i| render::frame(c, i as f32 / FRAMES as f32))
+        .collect()
 }
 
 fn announce(spell: &str, c: &MagicCircle) {
