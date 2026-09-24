@@ -39,12 +39,6 @@ maho cargo build --release
 maho "cargo build && ls"      # a single argument containing spaces goes to the shell (sh -c)
 ```
 
-If you want it every time, an alias makes it easy.
-
-```sh
-alias git='maho git'
-```
-
 | Option | Meaning |
 | --- | --- |
 | `--explain` | Show the circle's hash and the parameters drawn from it |
@@ -65,6 +59,22 @@ $ maho --explain git status
   script dotted  size 1.12  spacing 0.37  separator none  band runes
   rotation 265.3°  hue 288.8°  clockwise
 ```
+
+### Cast it when it counts
+
+Coding agents type commands for us in a split second now. `maho` is a deliberate waste: a human casting
+a command by hand and spending a second watching a circle unfold. Waste is a luxury only when it's
+occasional, so rather than putting it in front of everything, save it for the commands that mark a moment.
+
+```sh
+alias push='maho git push'          # sending off work you've finished
+alias release='maho git tag'        # tagging a release
+alias deploy='maho make deploy'     # shipping to production
+```
+
+Arguments are part of the spell, so `release v1.2.0` and `release v1.3.0` get different circles and
+tiers. A release that draws an ultimate spell is surely blessed. You can still `alias git='maho git'` if
+you want a circle every time, but the seconds do add up.
 
 ### Showing off your circle
 
@@ -109,13 +119,12 @@ The language is chosen in this order: `--locale` > `MAHO_LOCALE` > the config fi
 | major spell | 24 rows | 19% |
 | ultimate spell | 36 rows | 1% |
 
-The bigger the spell, the richer the circle. A minor spell is a simpler sketch with fewer rings, one
-band of script and fewer sparks. A major spell lays a second circle behind the first, faint and turning
-the other way. An ultimate spell is more than a big circle: another circle is laid out as a frame, the command's own
-circle sits shrunk in the middle, and small circles orbit on the frame's band, unfolding one after another.
+The bigger the spell, the richer the circle. An ultimate spell is more than just a big circle; what it
+becomes is for you to see when you draw one.
 
-The tier comes from the hash too, so a command is always the same tier (`cargo run` is an ultimate spell). Major and ultimate spells
-announce themselves with a line like `✦ ultimate spell` under the circle.
+The tier comes from the hash too, so the same spell is the same tier no matter how many times you cast it.
+Arguments are part of the spell, though, so different arguments can mean a different tier. Major and
+ultimate spells announce themselves with a line like `✦ ultimate spell` under the circle.
 
 ## Grimoire
 
