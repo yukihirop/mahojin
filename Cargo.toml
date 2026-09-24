@@ -8,6 +8,8 @@ repository = "https://github.com/yukihirop/mahojin"
 readme = "README.md"
 keywords = ["cli", "terminal", "magic-circle", "kitty", "iterm2"]
 categories = ["command-line-utilities"]
+# README の画像（assets/）やデモ用スクリプトは crate に入れない。crates.io は README の相対パスをリポジトリから引く
+include = ["/src", "/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/README.ja.md"]
 
 [dependencies]
 base64 = "0.23.1"
