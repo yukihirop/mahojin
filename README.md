@@ -59,7 +59,7 @@ Options go only before the command. In `maho cargo --explain E0308`, `--explain`
 $ maho --explain git status
 ✦ Magic circle unfolded: git status
   hash      e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6
-  tier      ultimate spell
+  tier      major spell
   layout breach  shape wheel  ornament star  rings 5  symmetry 3  runes 27  particles 398
   script dotted  size 1.12  spacing 0.37  separator none  band runes
   rotation 265.3°  hue 288.8°  clockwise
@@ -76,7 +76,7 @@ is written to the current directory, and a URL that opens X's composer with the 
 Attach the image yourself.
 
 ```text
-I cast "git status" and an ultimate spell circle unfolded ✦
+I cast "git status" and a major spell circle unfolded ✦
 
 breach layout / wheel / star / 3-fold symmetry
 Sigil e62b04aa
@@ -104,11 +104,14 @@ The language is chosen in this order: `--locale` > `MAHO_LOCALE` > the config fi
 | Tier | Height | Chance |
 | --- | --- | --- |
 | minor spell | 8 rows | 35% |
-| standard spell | 16 rows | 40% |
-| major spell | 24 rows | 18% |
-| ultimate spell | 36 rows | 7% |
+| standard spell | 16 rows | 45% |
+| major spell | 24 rows | 19% |
+| ultimate spell | 36 rows | 1% |
 
-The tier comes from the hash too, so a command is always the same tier. Major and ultimate spells
+An ultimate spell is more than a big circle: another circle is laid out as a frame, the command's own
+circle sits shrunk in the middle, and small circles orbit on the frame's band, unfolding one after another.
+
+The tier comes from the hash too, so a command is always the same tier (`cargo run` is an ultimate spell). Major and ultimate spells
 announce themselves with a line like `✦ ultimate spell` under the circle.
 
 ## How a circle is decided

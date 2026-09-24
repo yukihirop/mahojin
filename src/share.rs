@@ -85,7 +85,17 @@ mod tests {
         assert_eq!(image_name(&c), "maho-e62b04aa.png");
 
         let p = post(&c, "git status", Locale::En);
-        assert!(p.starts_with("I cast \"git status\" and an ultimate spell circle unfolded"));
+        assert!(p.starts_with("I cast \"git status\" and "));
+        assert!(p.contains(c.tier.name(Locale::En)));
+        // 母音で始まる格には an を付ける
+        let ultimate = MagicCircle {
+            tier: crate::circle::Tier::Ultimate,
+            ..c.clone()
+        };
+        assert!(
+            post(&ultimate, "git status", Locale::En)
+                .starts_with("I cast \"git status\" and an ultimate spell circle unfolded")
+        );
         assert!(p.contains("breach layout / wheel / star / 3-fold symmetry"));
         assert!(p.contains("Sigil e62b04aa"));
     }

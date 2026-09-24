@@ -10,7 +10,7 @@ use std::fmt::Write;
 use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 
-use crate::circle::{Band, Layout, MagicCircle, Ornament, Shape, unit};
+use crate::circle::{Band, Layout, MagicCircle, Ornament, Shape, Tier, unit};
 use crate::script;
 
 const SIZE: f32 = 1000.0;
@@ -91,11 +91,6 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     rng.set_stream(1);
     let st = Stages::at(t);
 
-    let hue = c.hue;
-    let main = format!("hsl({hue:.0},85%,65%)");
-    let sub = format!("hsl({:.0},80%,55%)", (hue + 35.0) % 360.0);
-    let dir = if c.clockwise { 1.0 } else { -1.0 };
-
     let mut s = String::new();
     let h = SIZE / 2.0;
     writeln!(
@@ -117,12 +112,38 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     )
     .unwrap();
 
-    particles(&mut s, &mut rng, c.particles, hue);
-    let scale = if c.layout == Layout::Breach {
-        BREACH_SCALE
+    particles(&mut s, &mut rng, c.particles, c.hue);
+    let reach = if c.tier == Tier::Ultimate {
+        ultimate(&mut s, c, spell, t, &mut rng);
+        BAND_OUTER
     } else {
-        1.0
+        body(&mut s, c, spell, t, &mut rng);
+        BAND_OUTER * scale_of(c)
     };
+
+    if st.flash > 0.0 {
+        writeln!(
+            s,
+            r#"<circle r="{:.1}" fill="hsl({:.0},85%,65%)" opacity="{:.3}"/>"#,
+            reach,
+            c.hue,
+            0.18 * st.flash
+        )
+        .unwrap();
+    }
+    s.push_str("</svg>\n");
+    s
+}
+
+/// 魔法陣 1 枚ぶん（粒子と背景を除く）を、原点を中心に半径 `SIZE / 2` の中へ描く。
+/// `rng` はルーンの字形に使う。
+fn body(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut ChaCha8Rng) {
+    let st = Stages::at(t);
+    let hue = c.hue;
+    let main = format!("hsl({hue:.0},85%,65%)");
+    let sub = format!("hsl({:.0},80%,55%)", (hue + 35.0) % 360.0);
+    let dir = if c.clockwise { 1.0 } else { -1.0 };
+    let scale = scale_of(c);
 
     writeln!(
         s,
@@ -135,23 +156,23 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     // 完成図では SMIL で回し続け（静止画に落とすと初期角で止まる）、
     // アニメーションのコマでは回りながら定位置へ収まっていく。
     open_layer(
-        &mut s,
+        s,
         t,
         st.band,
         dir * 150.0 * (1.0 - st.band),
         dir * 360.0,
         90,
     );
-    open_double(&mut s);
-    drawn_circle(&mut s, BAND_OUTER, 4.0, st.band);
-    drawn_circle(&mut s, BAND_INNER, 2.5, st.band);
+    open_double(s);
+    drawn_circle(s, BAND_OUTER, 4.0, st.band);
+    drawn_circle(s, BAND_INNER, 2.5, st.band);
     s.push_str("</g>\n");
     let visible = (c.runes as f32 * st.runes).ceil() as u8;
     match c.band {
-        Band::Runes | Band::Ticks => runes(&mut s, &mut rng, c.runes, visible, c.band),
+        Band::Runes | Band::Ticks => runes(s, rng, c.runes, visible, c.band),
         // 帯の幅いっぱいの大きな字で呪文を書く。区切りと字間は内側の帯と揃える
         Band::Script => script::ring(
-            &mut s,
+            s,
             spell,
             &script::Hand {
                 size: 1.0,
@@ -165,17 +186,17 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     s.push_str("</g>\n");
 
     if st.rings > 0.0 {
-        open_fade(&mut s, st.rings);
-        open_double(&mut s);
-        inner_rings(&mut s, c.rings, &sub);
+        open_fade(s, st.rings);
+        open_double(s);
+        inner_rings(s, c.rings, &sub);
         s.push_str("</g>\n");
-        script::ring(&mut s, spell, &c.hand, TEXT_OUTER, 10.0, st.rings);
+        script::ring(s, spell, &c.hand, TEXT_OUTER, 10.0, st.rings);
         s.push_str("</g>\n");
     }
 
     if st.ornament > 0.0 {
         open_layer(
-            &mut s,
+            s,
             t,
             st.ornament,
             -dir * 240.0 * (1.0 - st.ornament),
@@ -184,50 +205,134 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
         );
         match c.layout {
             Layout::Classic | Layout::Breach => {
-                open_double(&mut s);
-                ornament(&mut s, c.ornament, c.symmetry, &sub);
+                open_double(s);
+                ornament(s, c.ornament, c.symmetry, &sub);
                 s.push_str("</g>\n");
             }
-            Layout::Grand => grand_star(&mut s, c.symmetry, spell, c.hand.style, &main),
+            Layout::Grand => grand_star(s, c.symmetry, spell, c.hand.style, &main),
         }
         s.push_str("</g>\n");
 
         // 外周を破る多角形は、装飾とは逆にルーン帯と同じ向きへ回す
         if c.layout == Layout::Breach {
             open_layer(
-                &mut s,
+                s,
                 t,
                 st.ornament,
                 dir * 120.0 * (1.0 - st.ornament),
                 dir * 360.0,
                 120,
             );
-            breach(&mut s, c.symmetry);
+            breach(s, c.symmetry);
             s.push_str("</g>\n");
         }
     }
 
     if st.core > 0.0 {
-        open_fade(&mut s, st.core);
-        open_double(&mut s);
-        core(&mut s, c.shape, c.symmetry);
+        open_fade(s, st.core);
+        open_double(s);
+        core(s, c.shape, c.symmetry);
         s.push_str("</g>\n");
-        script::ring(&mut s, spell, &c.hand, TEXT_INNER, 7.0, st.core);
+        script::ring(s, spell, &c.hand, TEXT_INNER, 7.0, st.core);
         s.push_str("</g>\n");
     }
 
     s.push_str("</g>\n");
-    if st.flash > 0.0 {
-        writeln!(
+}
+
+/// 極大魔法で、中心に据える本来の魔法陣の倍率
+const ULTIMATE_CENTER: f32 = 0.6;
+/// 極大魔法で、周りを回る小さな魔法陣の倍率と、中心からの距離
+const ULTIMATE_ORBIT: f32 = 0.27;
+const ULTIMATE_ORBIT_R: f32 = 345.0;
+
+/// 極大魔法。種類の違う魔法陣を重ねる。
+/// 外枠に別の魔法陣を大きく敷き、中心に本来の魔法陣を縮めて据え、
+/// 外枠の帯にかかる位置へ小さな魔法陣を対称に配る。外から順に時間差で展開する。
+fn ultimate(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut ChaCha8Rng) {
+    // delay だけ遅れて始まり、t = 1 で全部そろう
+    let local = |delay: f32| t.map(|t| ((t - delay) / (1.0 - delay)).clamp(0.0, 1.0));
+
+    let frame = companion(c, spell, 0, 120.0);
+    body(s, &frame, spell, local(0.0), &mut companion_rng(&frame));
+
+    placed(s, (0.0, 0.0), ULTIMATE_CENTER, local(0.15), |s, t| {
+        body(s, c, spell, t, rng)
+    });
+
+    let n = match c.symmetry {
+        4 | 8 => 4,
+        5 => 5,
+        _ => 3,
+    };
+    for i in 0..n {
+        let theta = TAU * i as f32 / n as f32 + c.rotation.to_radians();
+        let orbit = companion(c, spell, 1 + i, 240.0);
+        placed(
             s,
-            r#"<circle r="{:.1}" fill="{main}" opacity="{:.3}"/>"#,
-            BAND_OUTER * scale,
-            0.18 * st.flash
-        )
-        .unwrap();
+            polar(ULTIMATE_ORBIT_R, theta),
+            ULTIMATE_ORBIT,
+            local(0.3 + 0.05 * i as f32),
+            |s, t| body(s, &orbit, spell, t, &mut companion_rng(&orbit)),
+        );
     }
-    s.push_str("</svg>\n");
-    s
+}
+
+/// 極大魔法に重ねる魔法陣。呪文に番号を足したものから引くので、同じ呪文なら毎回同じになる。
+/// 色相は本来の魔法陣からずらして、重なっても見分けられるようにする。
+fn companion(c: &MagicCircle, spell: &str, index: u8, hue_shift: f32) -> MagicCircle {
+    let mut d = MagicCircle::from_command(&format!("{spell}\u{1f}{index}"));
+    d.hue = (c.hue + hue_shift) % 360.0;
+    // 小さく置くものは、外へはみ出す多角形を付けない
+    if index > 0 && d.layout == Layout::Breach {
+        d.layout = Layout::Classic;
+    }
+    d
+}
+
+fn companion_rng(c: &MagicCircle) -> ChaCha8Rng {
+    let mut rng = ChaCha8Rng::from_seed(c.hash);
+    rng.set_stream(1);
+    rng
+}
+
+/// `at` を中心に `scale` 倍で魔法陣を置く。下の線が透けすぎないよう、背景色の円を敷く。
+/// 展開が始まる前（`t` が 0）には何も描かない。
+fn placed(
+    s: &mut String,
+    at: (f32, f32),
+    scale: f32,
+    t: Option<f32>,
+    draw: impl FnOnce(&mut String, Option<f32>),
+) {
+    let p = t.unwrap_or(1.0);
+    if p <= 0.0 {
+        return;
+    }
+    writeln!(
+        s,
+        r#"<g transform="translate({:.2} {:.2}) scale({scale})">"#,
+        at.0, at.1
+    )
+    .unwrap();
+    writeln!(
+        s,
+        r#"<circle r="{:.1}" fill="{BACKGROUND}" opacity="{:.3}"/>"#,
+        BAND_OUTER + 10.0,
+        0.8 * ease(p.min(0.3) / 0.3)
+    )
+    .unwrap();
+    draw(s, t);
+    s.push_str("</g>\n");
+}
+
+/// 外周を破る多角形のぶんだけ縮める
+fn scale_of(c: &MagicCircle) -> f32 {
+    if c.layout == Layout::Breach {
+        BREACH_SCALE
+    } else {
+        1.0
+    }
 }
 
 /// 線を平行な 2 本に割るフィルタ。線を少しと大きめに膨らませ、大きい方から小さい方を
@@ -852,6 +957,25 @@ mod tests {
         assert!(out.trim_end().ends_with("</svg>"));
         assert_eq!(out.matches(RUNE).count(), c.runes as usize);
         assert_eq!(out.matches(r#"opacity=""#).count(), c.particles as usize);
+    }
+
+    #[test]
+    fn ultimate_layers_several_circles() {
+        let c = MagicCircle::from_command("cargo run");
+        assert_eq!(c.tier, Tier::Ultimate);
+        // 外枠 1 + 中心 1 + 衛星 n。中心と衛星は translate して置く
+        let placed = |s: &str| s.matches(r#"<g transform="translate("#).count();
+        let orbits = match c.symmetry {
+            4 | 8 => 4,
+            5 => 5,
+            _ => 3,
+        };
+        assert_eq!(placed(&svg(&c, "cargo run")), 1 + orbits);
+        // 外から順に展開する。始まってすぐは外枠だけ
+        assert_eq!(placed(&frame(&c, "cargo run", 0.1)), 0);
+        assert_eq!(placed(&frame(&c, "cargo run", 1.0)), 1 + orbits);
+        // 極大魔法でない魔法陣は 1 枚だけ
+        assert_eq!(placed(&svg(&MagicCircle::from_command("ls"), "ls")), 0);
     }
 
     #[test]

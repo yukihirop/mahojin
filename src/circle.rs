@@ -150,6 +150,7 @@ impl Band {
 }
 
 /// 魔法の格。端末に出す魔法陣の大きさが変わる。大きいものほど出にくい。
+/// 極大魔法だけは、種類の違う魔法陣を重ねて描く。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tier {
     Small,
@@ -162,12 +163,12 @@ impl Tier {
     #[cfg(test)]
     const ALL: [Tier; 4] = [Tier::Small, Tier::Medium, Tier::Large, Tier::Ultimate];
 
-    /// 百分率で引いた値から格を決める。小 35% / 中 40% / 大 18% / 極大 7%
+    /// 百分率で引いた値から格を決める。小 35% / 中 45% / 大 19% / 極大 1%
     fn from_roll(roll: u32) -> Self {
         match roll {
             0..35 => Tier::Small,
-            35..75 => Tier::Medium,
-            75..93 => Tier::Large,
+            35..80 => Tier::Medium,
+            80..99 => Tier::Large,
             _ => Tier::Ultimate,
         }
     }

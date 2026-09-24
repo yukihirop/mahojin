@@ -38,20 +38,21 @@ DEMOS = [
         "-rw-r--r--  1 you  staff  2195 Sep 24 11:02 Cargo.toml",
         "drwxr-xr-x  6 you  staff   192 Sep 24 11:02 src",
     ]),
-    ("cargo build --release", [
-        "   Compiling maho v0.1.0 (~/maho)",
-        "    Finished `release` profile [optimized] target(s) in 4.21s",
-    ]),
     ("git status", [
         "On branch main",
         "nothing to commit, working tree clean",
+    ]),
+    ("cargo run", [
+        "   Compiling maho v0.1.0 (~/maho)",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.02s",
+        "     Running `target/debug/maho`",
     ]),
 ]
 
 # ギャラリーに並べるコマンド。似たものを隣に置き、4 つの格がそろうようにする
 GALLERY = [
     "git status", "git commit", "make", "git push",
-    "ls", "ls -la", "cargo build", "docker compose up",
+    "ls", "ls -la", "cargo build", "cargo run",
 ]
 
 W, H = 720, 820
