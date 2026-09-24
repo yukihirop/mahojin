@@ -108,7 +108,9 @@ The language is chosen in this order: `--locale` > `MAHO_LOCALE` > the config fi
 | major spell | 24 rows | 19% |
 | ultimate spell | 36 rows | 1% |
 
-An ultimate spell is more than a big circle: another circle is laid out as a frame, the command's own
+The bigger the spell, the richer the circle. A minor spell is a simpler sketch with fewer rings, one
+band of script and fewer sparks. A major spell lays a second circle behind the first, faint and turning
+the other way. An ultimate spell is more than a big circle: another circle is laid out as a frame, the command's own
 circle sits shrunk in the middle, and small circles orbit on the frame's band, unfolding one after another.
 
 The tier comes from the hash too, so a command is always the same tier (`cargo run` is an ultimate spell). Major and ultimate spells

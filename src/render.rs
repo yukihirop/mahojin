@@ -112,13 +112,26 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     )
     .unwrap();
 
-    particles(&mut s, &mut rng, c.particles, c.hue);
-    let reach = if c.tier == Tier::Ultimate {
-        ultimate(&mut s, c, spell, t, &mut rng);
-        BAND_OUTER
+    // 小魔法は粒子も控えめにする
+    let particles_count = if c.tier == Tier::Small {
+        c.particles / 3
     } else {
-        body(&mut s, c, spell, t, &mut rng);
-        BAND_OUTER * scale_of(c)
+        c.particles
+    };
+    particles(&mut s, &mut rng, particles_count, c.hue);
+    let reach = match c.tier {
+        Tier::Ultimate => {
+            ultimate(&mut s, c, spell, t, &mut rng);
+            BAND_OUTER
+        }
+        Tier::Large => {
+            large(&mut s, c, spell, t, &mut rng);
+            BAND_OUTER
+        }
+        Tier::Small | Tier::Medium => {
+            body(&mut s, c, spell, t, &mut rng);
+            BAND_OUTER * scale_of(c)
+        }
     };
 
     if st.flash > 0.0 {
@@ -188,7 +201,13 @@ fn body(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut 
     if st.rings > 0.0 {
         open_fade(s, st.rings);
         open_double(s);
-        inner_rings(s, c.rings, &sub);
+        // 小魔法は内側の同心円を 2 本までにする
+        let rings = if c.tier == Tier::Small {
+            c.rings.min(4)
+        } else {
+            c.rings
+        };
+        inner_rings(s, rings, &sub);
         s.push_str("</g>\n");
         script::ring(s, spell, &c.hand, TEXT_OUTER, 10.0, st.rings);
         s.push_str("</g>\n");
@@ -233,11 +252,45 @@ fn body(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut 
         open_double(s);
         core(s, c.shape, c.symmetry);
         s.push_str("</g>\n");
-        script::ring(s, spell, &c.hand, TEXT_INNER, 7.0, st.core);
+        // 小魔法は呪文の帯を外側の 1 本だけにする
+        if c.tier != Tier::Small {
+            script::ring(s, spell, &c.hand, TEXT_INNER, 7.0, st.core);
+        }
         s.push_str("</g>\n");
     }
 
     s.push_str("</g>\n");
+}
+
+/// 大魔法で、後ろの魔法陣の上に重ねる本来の魔法陣の倍率
+const LARGE_CENTER: f32 = 0.84;
+/// 大魔法で、後ろの魔法陣の色相のずらし幅と不透明度。
+/// 隣り合う色（-60°）にして、極大魔法（120° ずつずらす）より控えめに見せる。
+/// 150° などの遠い色は、薄くすると濁って見えた。
+const LARGE_BACK_HUE: f32 = 300.0;
+const LARGE_BACK_OPACITY: f32 = 0.6;
+
+/// 大魔法。後ろに別の魔法陣を薄く、逆向きに回して敷き、本来の魔法陣を少し縮めて重ねる。
+/// 極大魔法の外枠を控えめにした形で、後ろの魔法陣は透けて見える。
+fn large(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut ChaCha8Rng) {
+    let mut back = companion(c, spell, 0, LARGE_BACK_HUE);
+    back.clockwise = !c.clockwise;
+    writeln!(s, r#"<g opacity="{LARGE_BACK_OPACITY}">"#).unwrap();
+    body(s, &back, spell, delayed(t, 0.0), &mut companion_rng(&back));
+    s.push_str("</g>\n");
+    placed(
+        s,
+        (0.0, 0.0),
+        LARGE_CENTER,
+        delayed(t, 0.1),
+        0.35,
+        |s, t| body(s, c, spell, t, rng),
+    );
+}
+
+/// `delay` だけ遅れて始まり、`t` = 1 でそろう時刻。完成図（`None`）はそのまま。
+fn delayed(t: Option<f32>, delay: f32) -> Option<f32> {
+    t.map(|t| ((t - delay) / (1.0 - delay)).clamp(0.0, 1.0))
 }
 
 /// 極大魔法で、中心に据える本来の魔法陣の倍率
@@ -250,13 +303,12 @@ const ULTIMATE_ORBIT_R: f32 = 345.0;
 /// 外枠に別の魔法陣を大きく敷き、中心に本来の魔法陣を縮めて据え、
 /// 外枠の帯にかかる位置へ小さな魔法陣を対称に配る。外から順に時間差で展開する。
 fn ultimate(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut ChaCha8Rng) {
-    // delay だけ遅れて始まり、t = 1 で全部そろう
-    let local = |delay: f32| t.map(|t| ((t - delay) / (1.0 - delay)).clamp(0.0, 1.0));
+    let local = |delay: f32| delayed(t, delay);
 
     let frame = companion(c, spell, 0, 120.0);
     body(s, &frame, spell, local(0.0), &mut companion_rng(&frame));
 
-    placed(s, (0.0, 0.0), ULTIMATE_CENTER, local(0.15), |s, t| {
+    placed(s, (0.0, 0.0), ULTIMATE_CENTER, local(0.15), 0.8, |s, t| {
         body(s, c, spell, t, rng)
     });
 
@@ -273,19 +325,25 @@ fn ultimate(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &
             polar(ULTIMATE_ORBIT_R, theta),
             ULTIMATE_ORBIT,
             local(0.3 + 0.05 * i as f32),
+            0.8,
             |s, t| body(s, &orbit, spell, t, &mut companion_rng(&orbit)),
         );
     }
 }
 
-/// 極大魔法に重ねる魔法陣。呪文に番号を足したものから引くので、同じ呪文なら毎回同じになる。
+/// 大魔法・極大魔法に重ねる魔法陣。呪文に番号を足したものから引くので、同じ呪文なら毎回同じになる。
 /// 色相は本来の魔法陣からずらして、重なっても見分けられるようにする。
 fn companion(c: &MagicCircle, spell: &str, index: u8, hue_shift: f32) -> MagicCircle {
     let mut d = MagicCircle::from_command(&format!("{spell}\u{1f}{index}"));
     d.hue = (c.hue + hue_shift) % 360.0;
-    // 小さく置くものは、外へはみ出す多角形を付けない
-    if index > 0 && d.layout == Layout::Breach {
-        d.layout = Layout::Classic;
+    // 小さく置くものは、外へはみ出す多角形を付けず、小魔法と同じく簡略に描く
+    if index > 0 {
+        if d.layout == Layout::Breach {
+            d.layout = Layout::Classic;
+        }
+        d.tier = Tier::Small;
+    } else {
+        d.tier = Tier::Medium;
     }
     d
 }
@@ -296,13 +354,15 @@ fn companion_rng(c: &MagicCircle) -> ChaCha8Rng {
     rng
 }
 
-/// `at` を中心に `scale` 倍で魔法陣を置く。下の線が透けすぎないよう、背景色の円を敷く。
+/// `at` を中心に `scale` 倍で魔法陣を置く。下の線が透けすぎないよう、背景色の円を
+/// 不透明度 `veil` で敷く。
 /// 展開が始まる前（`t` が 0）には何も描かない。
 fn placed(
     s: &mut String,
     at: (f32, f32),
     scale: f32,
     t: Option<f32>,
+    veil: f32,
     draw: impl FnOnce(&mut String, Option<f32>),
 ) {
     let p = t.unwrap_or(1.0);
@@ -319,7 +379,7 @@ fn placed(
         s,
         r#"<circle r="{:.1}" fill="{BACKGROUND}" opacity="{:.3}"/>"#,
         BAND_OUTER + 10.0,
-        0.8 * ease(p.min(0.3) / 0.3)
+        veil * ease(p.min(0.3) / 0.3)
     )
     .unwrap();
     draw(s, t);
@@ -901,12 +961,13 @@ mod tests {
 
     const RUNE: &str = r#"<path class="rune""#;
 
-    /// 帯にルーンを並べる魔法陣になるコマンド
+    /// 帯が `band` の魔法陣になるコマンド
     fn with_band(band: Band) -> (MagicCircle, String) {
         (0..)
             .map(|i| format!("cmd {i}"))
             .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
-            .find(|(c, _)| c.band == band)
+            // 重ね描きや簡略化の無い中魔法から選ぶ
+            .find(|(c, _)| c.band == band && c.tier == Tier::Medium)
             .unwrap()
     }
 
@@ -976,6 +1037,33 @@ mod tests {
         assert_eq!(placed(&frame(&c, "cargo run", 1.0)), 1 + orbits);
         // 極大魔法でない魔法陣は 1 枚だけ
         assert_eq!(placed(&svg(&MagicCircle::from_command("ls"), "ls")), 0);
+    }
+
+    fn with_tier(tier: Tier) -> (MagicCircle, String) {
+        (0..)
+            .map(|i| format!("cmd {i}"))
+            .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
+            .find(|(c, _)| c.tier == tier)
+            .unwrap()
+    }
+
+    #[test]
+    fn large_puts_one_circle_behind() {
+        let (c, spell) = with_tier(Tier::Large);
+        let out = svg(&c, &spell);
+        assert_eq!(out.matches(r#"<g transform="translate("#).count(), 1);
+        let back = format!(r#"<g opacity="{LARGE_BACK_OPACITY}">"#);
+        assert_eq!(out.matches(&back).count(), 1);
+    }
+
+    #[test]
+    fn small_is_simpler() {
+        // 内側の呪文の帯（半径 TEXT_INNER）は小魔法にだけ無い
+        let inner = format!("translate(0 {:.2})", -TEXT_INNER);
+        let (small, spell) = with_tier(Tier::Small);
+        assert!(!svg(&small, &spell).contains(&inner));
+        let (medium, spell) = with_tier(Tier::Medium);
+        assert!(svg(&medium, &spell).contains(&inner));
     }
 
     #[test]
