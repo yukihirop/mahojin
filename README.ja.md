@@ -27,8 +27,25 @@ $ mahojin git status
 
 ## インストール
 
+Rust が入っていれば:
+
 ```sh
-cargo install --git https://github.com/yukihirop/mahojin
+cargo install mahojin
+```
+
+macOS（Apple Silicon / Intel）と Linux（x86_64 / aarch64）のビルド済みバイナリは
+[Releases](https://github.com/yukihirop/mahojin/releases) にあります。展開して、`mahojin` を `PATH` の通った場所に置いてください。
+
+```sh
+tar xzf mahojin-v0.1.0-aarch64-apple-darwin.tar.gz
+mv mahojin-v0.1.0-aarch64-apple-darwin/mahojin ~/.local/bin/
+```
+
+macOS のバイナリには署名をしていません。ブラウザで落としたものが開けないと言われたら、
+一度だけ隔離の印を外してください。
+
+```sh
+xattr -d com.apple.quarantine ~/.local/bin/mahojin
 ```
 
 ## 使い方

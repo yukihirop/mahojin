@@ -27,8 +27,25 @@ $ mahojin git status
 
 ## Install
 
+With Rust installed:
+
 ```sh
-cargo install --git https://github.com/yukihirop/mahojin
+cargo install mahojin
+```
+
+Or download a prebuilt binary for macOS (Apple Silicon / Intel) or Linux (x86_64 / aarch64) from
+[Releases](https://github.com/yukihirop/mahojin/releases), and put `mahojin` somewhere on your `PATH`.
+
+```sh
+tar xzf mahojin-v0.1.0-aarch64-apple-darwin.tar.gz
+mv mahojin-v0.1.0-aarch64-apple-darwin/mahojin ~/.local/bin/
+```
+
+The macOS binaries are not signed. If macOS refuses to open one you downloaded in a browser,
+clear the quarantine flag once:
+
+```sh
+xattr -d com.apple.quarantine ~/.local/bin/mahojin
 ```
 
 ## Usage
