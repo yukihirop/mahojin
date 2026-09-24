@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/yukihirop/mahojin/actions/workflows/ci.yml/badge.svg)](https://github.com/yukihirop/mahojin/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/mahojin.svg)](https://crates.io/crates/mahojin)
+[![downloads](https://img.shields.io/crates/d/mahojin.svg)](https://crates.io/crates/mahojin)
 [![GitHub release](https://img.shields.io/github/v/release/yukihirop/mahojin)](https://github.com/yukihirop/mahojin/releases/latest)
 [![License: MIT](https://img.shields.io/crates/l/mahojin.svg)](LICENSE)
 
