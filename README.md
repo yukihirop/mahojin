@@ -1,52 +1,54 @@
 # maho
 
-**いつものコマンドを、魔法として唱える。**
+English | [日本語](README.ja.md)
 
-`maho` はどんな CLI コマンドの前にも付けられるラッパーです。コマンドを実行する前に、
-そのコマンド専用の魔法陣を端末に展開します。
+**Cast your everyday commands as spells.**
 
-![maho のデモ](assets/demo.gif)
+`maho` is a wrapper you can put in front of any CLI command. Before running the command,
+it unfolds a magic circle made just for that command, right in your terminal.
+
+![maho demo](assets/demo.gif)
 
 ```console
 $ maho git status
 ```
 
-- **同じ呪文からは、必ず同じ魔法陣が出ます。**魔法陣はコマンド文字列の SHA-256 から決まります。
-  `git status` を唱えれば、いつでもどのマシンでもこの紫の三角が出ます
-- **1 文字違えば、まったく別の魔法陣になります。**`ls` と `ls -la` は似ても似つきません
-- **円に書かれた文字はコマンドそのものです。**帯に並ぶ架空の魔法文字は、
-  唱えたコマンドを 1 バイトずつ書いたものです。同じ文字はどの魔法陣でも同じ字形になります
-- **仕事の邪魔はしません。**展開はおよそ 1 秒で、演出はすべて stderr に出ます。
-  stdout・終了コード・パイプはそのままコマンドのものです
+- **The same spell always summons the same circle.** The circle is derived from the SHA-256 of
+  the command string. Cast `git status` and you get this purple triangle, any time, on any machine
+- **Change one character and you get a completely different circle.** `ls` and `ls -la` look nothing alike
+- **The writing on the rings is the command itself.** The invented magic script on the bands spells out
+  the command one byte at a time. The same character has the same glyph in every circle
+- **It stays out of your way.** The circle unfolds in about a second, and all of it goes to stderr.
+  stdout, the exit code and pipes stay the command's own
 
-![コマンドごとの魔法陣](assets/gallery.jpg)
+![A magic circle for each command](assets/gallery.jpg)
 
-## インストール
+## Install
 
 ```sh
 cargo install --git https://github.com/yukihirop/maho
 ```
 
-## 使い方
+## Usage
 
 ```sh
 maho git status
 maho cargo build --release
-maho "cargo build && ls"      # 空白を含む引数 1 つはシェル（sh -c）に渡す
+maho "cargo build && ls"      # a single argument containing spaces goes to the shell (sh -c)
 ```
 
-毎回付けるなら alias にしておくと楽です。
+If you want it every time, an alias makes it easy.
 
 ```sh
 alias git='maho git'
 ```
 
-| オプション | 意味 |
+| Option | Meaning |
 | --- | --- |
-| `--explain` | 魔法陣のハッシュと、そこから引いたパラメータを表示する |
-| `--svg <file>` | 魔法陣を SVG に書き出す |
+| `--explain` | Show the circle's hash and the parameters drawn from it |
+| `--svg <file>` | Write the circle out as SVG |
 
-オプションはコマンドより前にだけ置けます。`maho cargo --explain E0308` の `--explain` は cargo のものです。
+Options go only before the command. In `maho cargo --explain E0308`, `--explain` belongs to cargo.
 
 ```console
 $ maho --explain git status
@@ -56,36 +58,38 @@ $ maho --explain git status
   rotation 265.3°  hue 288.8°  右回り
 ```
 
-## 魔法陣の決まり方
+(The output is in Japanese: 魔法陣展開 means "magic circle unfolded", 右回り means "clockwise".)
 
-1. コマンド文字列（引数を空白で連結したもの）の SHA-256 を取る
-2. それを種にした乱数（ChaCha8）から、配置・中心図形・装飾・円の数・対称性・ルーン数・
-   粒子数・回転・色相・回転方向を引く
-3. 配置は 3 種（標準 / 大星 / 突破）、中心図形は 12 種（六芒星・五芒星・螺旋・
-   メタトロン・車輪など）、装飾は 6 種（星形・円鎖・光条・冠・網・数珠）から選ばれる
-4. SVG を組み立て、[resvg](https://github.com/linebender/resvg) で PNG にして端末へ送る。
-   外側の帯から内側へ、順に描き上がっていくコマを 16 枚流す
+## How a circle is decided
 
-## 対応している端末
+1. Take the SHA-256 of the command string (the arguments joined with spaces)
+2. Seed a random generator (ChaCha8) with it, and draw the layout, core shape, ornament, number of rings,
+   symmetry, rune count, particle count, rotation, hue and spin direction
+3. The layout is one of 3 (classic / grand star / breach), the core shape one of 12 (hexagram, pentagram,
+   spiral, Metatron's cube, wheel, and more), and the ornament one of 6 (star, chain, rays, crown, web, beads)
+4. Build an SVG, turn it into PNGs with [resvg](https://github.com/linebender/resvg), and send them to the
+   terminal: 16 frames that draw the circle from the outer band inward
 
-| 端末 | 方式 |
+## Supported terminals
+
+| Terminal | Method |
 | --- | --- |
 | Ghostty / Kitty | Kitty graphics protocol |
 | iTerm2 / WezTerm | iTerm2 inline images |
-| それ以外 / tmux の中 | 画像は出さず、`✦ 魔法陣展開: <コマンド>` の 1 行だけ |
+| Anything else / inside tmux | No image, just the line `✦ 魔法陣展開: <command>` |
 
-stderr が端末でないとき（リダイレクト中など）は何も出しません。
+When stderr is not a terminal (for example when redirected), nothing is shown.
 
-| 環境変数 | 意味 |
+| Environment variable | Meaning |
 | --- | --- |
-| `MAHO_GRAPHICS=kitty\|iterm\|none` | 自動判定をやめて方式を固定する |
-| `MAHO_ANIMATION=off` | 展開アニメーションをやめ、完成図 1 枚だけ出す |
+| `MAHO_GRAPHICS=kitty\|iterm\|none` | Skip detection and force a method |
+| `MAHO_ANIMATION=off` | Skip the unfolding animation and show only the finished circle |
 
-## README の画像を作り直す
+## Regenerating the README images
 
-`assets/` の GIF とギャラリーは、`maho` が実際に端末へ送った画像を抜き出して、
-ターミナルの枠とコマンドの出力を描き足したものです（コマンド自体は偽物に差し替えて走らせません）。
+The GIF and gallery in `assets/` are the images `maho` actually sent to the terminal, with the terminal
+window and command output drawn around them (the commands are replaced with stubs and never really run).
 
 ```sh
-python3 scripts/demo.py   # cargo, ImageMagick, script(1) が要る
+python3 scripts/demo.py   # needs cargo, ImageMagick and script(1)
 ```
