@@ -53,11 +53,11 @@ pub fn detect(env: impl Fn(&str) -> Option<String>) -> Protocol {
 }
 
 /// SVG のコマを順に PNG にして、stderr の同じ場所へ描き直していく。
-/// コマが 1 枚なら静止画になる。描けなかったら理由を返す。
-/// stderr が端末でないとき（リダイレクト中など）は黙って何もしない。
-pub fn play(frames: &[String], interval: Duration, protocol: Protocol) -> Result<(), String> {
+/// コマが 1 枚なら静止画になる。描いたら `true`、描けなかったら理由を返す。
+/// stderr が端末でないとき（リダイレクト中など）は何もせず `false` を返す。
+pub fn play(frames: &[String], interval: Duration, protocol: Protocol) -> Result<bool, String> {
     if protocol == Protocol::None || !io::stderr().is_terminal() || frames.is_empty() {
-        return Ok(());
+        return Ok(false);
     }
     // 1 コマの変換に 0.1 秒ほどかかる。全コマを並列で焼きつつ、焼けた順に
     // 決まった間隔で流す。全部焼いてから流すと、その時間ぶん待たされる。
@@ -83,7 +83,8 @@ pub fn play(frames: &[String], interval: Duration, protocol: Protocol) -> Result
         next = Instant::now() + interval;
     }
     // 画像の下の行へ抜ける
-    out(format!("\x1b8\x1b[{ROWS}B\r").as_bytes()).map_err(io)
+    out(format!("\x1b8\x1b[{ROWS}B\r").as_bytes()).map_err(io)?;
+    Ok(true)
 }
 
 /// コマごとの受け口を返し、裏のスレッドで先頭のコマから順に焼いていく。
