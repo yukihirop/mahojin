@@ -4,13 +4,13 @@
 //! 同じハッシュから別ストリームの乱数で引く。パラメータ側の値の割り当てを
 //! 変えずに描画の細部だけを足せるようにするため。
 
-use std::f32::consts::TAU;
+use std::f32::consts::{FRAC_1_SQRT_2, TAU};
 use std::fmt::Write;
 
 use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 
-use crate::circle::{Band, Layout, MagicCircle, Ornament, Shape, Tier, unit};
+use crate::circle::{Band, FORBIDDEN_HUE, Layout, MagicCircle, Ornament, Shape, Tier, unit};
 use crate::script;
 
 const SIZE: f32 = 1000.0;
@@ -118,7 +118,13 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     } else {
         c.particles
     };
-    particles(&mut s, &mut rng, particles_count, c.hue);
+    // 粒子はふつう補色で光る。禁呪では火の粉になる
+    let particle_hue = if c.forbidden {
+        20.0
+    } else {
+        (c.hue + 180.0) % 360.0
+    };
+    particles(&mut s, &mut rng, particles_count, particle_hue);
     let reach = match c.tier {
         Tier::Ultimate => {
             ultimate(&mut s, c, spell, t, &mut rng);
@@ -134,6 +140,9 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
         }
     };
 
+    if c.forbidden {
+        seal(&mut s, reach, &st);
+    }
     if st.flash > 0.0 {
         writeln!(
             s,
@@ -336,6 +345,11 @@ fn ultimate(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &
 fn companion(c: &MagicCircle, spell: &str, index: u8, hue_shift: f32) -> MagicCircle {
     let mut d = MagicCircle::from_command(&format!("{spell}\u{1f}{index}"));
     d.hue = (c.hue + hue_shift) % 360.0;
+    // 禁呪は重ねた魔法陣まで赤く染める。見分けがつくよう、色相は火の色の範囲でだけずらす
+    if c.forbidden {
+        d.forbid();
+        d.hue = (FORBIDDEN_HUE + hue_shift / 12.0) % 360.0;
+    }
     // 小さく置くものは、外へはみ出す多角形を付けず、小魔法と同じく簡略に描く
     if index > 0 {
         if d.layout == Layout::Breach {
@@ -937,9 +951,37 @@ fn polygon(s: &mut String, n: u8, r: f32, offset: f32, width: f32) {
     .unwrap();
 }
 
+/// 禁呪の封印。外周を鎖のような破線で囲み、最後に斜めの一線で封じる（禁止の標識の形）。
+fn seal(s: &mut String, reach: f32, st: &Stages) {
+    let r = reach + 16.0;
+    writeln!(
+        s,
+        r#"<g fill="none" stroke="hsl({FORBIDDEN_HUE:.0},95%,55%)" stroke-linecap="round" filter="url(#glow)">"#
+    )
+    .unwrap();
+    writeln!(
+        s,
+        r#"<circle r="{r:.1}" stroke-width="7" stroke-dasharray="26 14" opacity="{:.3}"/>"#,
+        st.band
+    )
+    .unwrap();
+    // 中心図形が現れるのに合わせて、左上から右下へ引いていく
+    if st.core > 0.0 {
+        let k = r * FRAC_1_SQRT_2;
+        let end = -k + 2.0 * k * st.core;
+        writeln!(
+            s,
+            r#"<line x1="{:.1}" y1="{:.1}" x2="{end:.1}" y2="{end:.1}" stroke-width="16" opacity="0.85"/>"#,
+            -k, -k
+        )
+        .unwrap();
+    }
+    s.push_str("</g>\n");
+}
+
 /// 魔法陣の周りに漂う光の粒。
 fn particles(s: &mut String, rng: &mut ChaCha8Rng, count: u16, hue: f32) {
-    writeln!(s, r#"<g fill="hsl({:.0},90%,80%)">"#, (hue + 180.0) % 360.0).unwrap();
+    writeln!(s, r#"<g fill="hsl({hue:.0},90%,80%)">"#).unwrap();
     for _ in 0..count {
         // 面積あたり一様になるよう半径は平方根で取る
         let r = unit(rng).sqrt() * SIZE / 2.0;
@@ -960,6 +1002,19 @@ mod tests {
     use super::*;
 
     const RUNE: &str = r#"<path class="rune""#;
+
+    #[test]
+    fn forbidden_spells_are_sealed() {
+        let mut c = MagicCircle::from_command("rm -rf x");
+        let plain = svg(&c, "rm -rf x");
+        c.forbid();
+        let sealed = svg(&c, "rm -rf x");
+        let seal = r#"stroke-width="16""#;
+        assert!(sealed.contains(seal) && !plain.contains(seal));
+        assert!(sealed.contains(&format!("hsl({FORBIDDEN_HUE:.0},")));
+        // 斜線は中心図形と一緒に現れる。展開の最初のコマにはまだ無い
+        assert!(!frame(&c, "rm -rf x", 0.05).contains(seal));
+    }
 
     /// 帯が `band` の魔法陣になるコマンド
     fn with_band(band: Band) -> (MagicCircle, String) {

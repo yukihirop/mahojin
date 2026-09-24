@@ -196,6 +196,9 @@ impl Tier {
 
 pub const SYMMETRIES: [u8; 6] = [3, 4, 5, 6, 8, 12];
 
+/// 禁呪の色相（深紅）
+pub const FORBIDDEN_HUE: f32 = 355.0;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MagicCircle {
     pub hash: [u8; 32],
@@ -221,6 +224,8 @@ pub struct MagicCircle {
     pub hand: Hand,
     pub band: Band,
     pub tier: Tier,
+    /// 禁呪。ハッシュではなくコマンドの中身で決まるので、`from_hash` では常に false
+    pub forbidden: bool,
 }
 
 impl MagicCircle {
@@ -256,6 +261,23 @@ impl MagicCircle {
             },
             band: Band::ALL[below(&mut rng, Band::ALL.len() as u32) as usize],
             tier: Tier::from_roll(below(&mut rng, 100)),
+            forbidden: false,
+        }
+    }
+
+    /// 禁呪として封じる。形は変えず、血の色で逆さに回す。
+    pub fn forbid(&mut self) {
+        self.forbidden = true;
+        self.hue = FORBIDDEN_HUE;
+        self.clockwise = false;
+    }
+
+    /// 格の名前。禁呪なら頭にそう付ける。
+    pub fn title(&self, l: Locale) -> String {
+        match (self.forbidden, l) {
+            (false, _) => self.tier.name(l).into(),
+            (true, Locale::Ja) => format!("禁呪・{}", self.tier.name(l)),
+            (true, Locale::En) => format!("forbidden {}", self.tier.name(l)),
         }
     }
 

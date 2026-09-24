@@ -31,7 +31,8 @@ pub fn skipped(line: &str, skip: &[String]) -> bool {
     name.is_some_and(|name| skip.iter().any(|s| s == name))
 }
 
-fn is_assignment(word: &str) -> bool {
+/// `FOO=1` のような環境変数の代入か
+pub fn is_assignment(word: &str) -> bool {
     word.split_once('=').is_some_and(|(name, _)| {
         !name.is_empty()
             && !name.starts_with(|c: char| c.is_ascii_digit())

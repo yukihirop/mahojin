@@ -13,7 +13,7 @@ const MAX_SPELL: usize = 60;
 pub fn post(c: &MagicCircle, spell: &str, l: Locale) -> String {
     let (layout, shape, ornament) = (c.layout.name(l), c.shape.name(l), c.ornament.name(l));
     let (spell, sigil) = (shorten(spell), &c.hash_hex()[..8]);
-    let tier = c.tier.name(l);
+    let tier = c.title(l);
     let body = match l {
         Locale::Ja => format!(
             "「{spell}」を唱えたら、{tier}の魔法陣が展開した ✦\n\n\

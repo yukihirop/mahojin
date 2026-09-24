@@ -1,5 +1,6 @@
 mod circle;
 mod config;
+mod forbidden;
 mod grimoire;
 mod locale;
 mod render;
@@ -255,7 +256,10 @@ fn main() -> ExitCode {
     if opts.chant && shell::skipped(&spell, &shell::skip_list(config.chant_skip.as_deref())) {
         return ExitCode::SUCCESS;
     }
-    let circle = MagicCircle::from_command(&spell);
+    let mut circle = MagicCircle::from_command(&spell);
+    if forbidden::is_forbidden(&spell) {
+        circle.forbid();
+    }
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
     // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
     let target = terminal::detect(|k| std::env::var(k).ok(), terminal::ask_tmux);
@@ -274,7 +278,9 @@ fn main() -> ExitCode {
         explain(&spell, &circle, l);
     } else if !drawn && std::io::stderr().is_terminal() {
         // 絵を出せない端末でも、魔法が発動したことだけは伝える
-        eprintln!("{}", unfolded(&spell, l));
+        eprintln!("{}", unfolded(&spell, &circle, l));
+    } else if drawn && circle.forbidden {
+        eprintln!("✦ {}", circle.title(l));
     } else if drawn && matches!(circle.tier, Tier::Large | Tier::Ultimate) {
         // 出にくい格を引いたときだけ、何が出たかを名乗る
         eprintln!("✦ {}", circle.tier.name(l));
@@ -483,17 +489,19 @@ fn setup(
     ExitCode::SUCCESS
 }
 
-fn unfolded(spell: &str, l: Locale) -> String {
-    format!(
-        "✦ {}: {spell}",
+fn unfolded(spell: &str, c: &MagicCircle, l: Locale) -> String {
+    let what = if c.forbidden {
+        l.pick("禁呪展開", "Forbidden circle unfolded")
+    } else {
         l.pick("魔法陣展開", "Magic circle unfolded")
-    )
+    };
+    format!("✦ {what}: {spell}")
 }
 
 fn explain(spell: &str, c: &MagicCircle, l: Locale) {
-    eprintln!("{}", unfolded(spell, l));
+    eprintln!("{}", unfolded(spell, c, l));
     eprintln!("  hash      {}", c.hash_hex());
-    eprintln!("  tier      {}", c.tier.name(l));
+    eprintln!("  tier      {}", c.title(l));
     eprintln!(
         "  layout {}  shape {}  ornament {}  rings {}  symmetry {}  runes {}  particles {}",
         c.layout.name(l),
