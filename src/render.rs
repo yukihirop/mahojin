@@ -130,10 +130,76 @@ fn ease(x: f32) -> f32 {
 
 fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     let mut s = open_svg(Stages::at(t).flash);
-    scene(&mut s, c, spell, t);
+    match aurora(c) {
+        Some(stops) => aurora_scene(&mut s, c, spell, t, stops),
+        None => scene(&mut s, c, spell, t),
+    }
     s.push_str("</svg>\n");
     s
 }
+
+/// 極大魔法から上は、画面の上から下へ流れるグラデーションで光る。上・真ん中・下の色を返す。
+/// 色相は魔法陣のものから決めるので、極大魔法どうしでも見分けられる。
+fn aurora(c: &MagicCircle) -> Option<[(f32, f32, f32); 3]> {
+    let hue = |d: f32| (c.hue + d).rem_euclid(360.0);
+    if c.holy {
+        // 白金から金、裾は赤金へ
+        Some([(50.0, 100.0, 88.0), (c.hue, 95.0, 68.0), (36.0, 95.0, 60.0)])
+    } else if c.forbidden {
+        // 燃える橙から血の赤、裾は暗い紫へ沈む
+        Some([
+            (20.0, 100.0, 62.0),
+            (c.hue, 100.0, 60.0),
+            (290.0, 90.0, 55.0),
+        ])
+    } else if c.summoned || c.tier == Tier::Ultimate {
+        Some([
+            (hue(-45.0), 100.0, 68.0),
+            (c.hue, 100.0, 70.0),
+            (hue(75.0), 100.0, 74.0),
+        ])
+    } else {
+        None
+    }
+}
+
+/// グラデーションで光る魔法陣。いつもの絵の明るさを型にして、そこへグラデーションを流し込む。
+/// 光のにじみも型に残るので、そのまま光る。
+/// グラデーションは画面に固定なので、魔法陣が回ると線が色の中を通っていく。
+fn aurora_scene(
+    s: &mut String,
+    c: &MagicCircle,
+    spell: &str,
+    t: Option<f32>,
+    [top, middle, bottom]: [(f32, f32, f32); 3],
+) {
+    let h = SIZE / 2.0;
+    writeln!(
+        s,
+        r#"<defs><linearGradient id="aurora" x1="0" y1="{}" x2="0" y2="{BAND_OUTER}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="{}"/><stop offset="0.5" stop-color="{}"/><stop offset="1" stop-color="{}"/></linearGradient>{LIFT}</defs>
+<mask id="lines" maskUnits="userSpaceOnUse" x="{}" y="{}" width="{SIZE}" height="{SIZE}"><g filter="url(#lift)">"#,
+        -BAND_OUTER,
+        hsl(top),
+        hsl(middle),
+        hsl(bottom),
+        -h,
+        -h
+    )
+    .unwrap();
+    scene(s, c, spell, t);
+    writeln!(
+        s,
+        r#"</g></mask>
+<rect x="{}" y="{}" width="{SIZE}" height="{SIZE}" fill="url(#aurora)" mask="url(#lines)"/>"#,
+        -h, -h
+    )
+    .unwrap();
+}
+
+/// 絵を白い型にする。明るいところほど濃く、目に明るく見える緑を重く取る。
+/// 元の透明度を掛け戻すので、薄い光のにじみは薄いまま残る（掛けないと、にじみの縁が塗りつぶされる）。
+/// 暗い色が沈みすぎないよう、sRGB のまま計算する
+const LIFT: &str = r#"<filter id="lift" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0.6 1.2 0.25 0 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>"#;
 
 /// SVG の頭と背景。`flash` が強いほど光のにじみを広げる。
 fn open_svg(flash: f32) -> String {
@@ -1233,6 +1299,46 @@ mod tests {
     }
 
     /// 帯が `band` の魔法陣になるコマンド
+    #[test]
+    fn ultimate_and_above_shine_in_a_gradient() {
+        let find = |tier: Tier| {
+            (0..)
+                .map(|i| format!("git tag v1.{i}.0"))
+                .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
+                .find(|(c, _)| c.tier == tier)
+                .unwrap()
+        };
+        let gradient =
+            |c: &MagicCircle, spell: &str| svg(c, spell).contains(r#"fill="url(#aurora)""#);
+        let (ultimate, spell) = find(Tier::Ultimate);
+        assert!(gradient(&ultimate, &spell));
+        // 極大魔法どうしでも、色相が違えば色も違う
+        let (other, other_spell) = (0..)
+            .map(|i| format!("git tag v2.{i}.0"))
+            .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
+            .find(|(c, _)| c.tier == Tier::Ultimate && (c.hue - ultimate.hue).abs() > 30.0)
+            .unwrap();
+        assert_ne!(aurora(&ultimate), aurora(&other));
+        assert!(gradient(&other, &other_spell));
+        for tier in [Tier::Small, Tier::Medium, Tier::Large] {
+            let (c, spell) = find(tier);
+            assert!(!gradient(&c, &spell), "{tier:?}");
+            assert!(aurora(&c).is_none());
+        }
+        // 隠し魔法は、引いた格にかかわらずグラデーションになる
+        let mut forbidden = MagicCircle::from_command("ls");
+        forbidden.forbid();
+        let mut holy = MagicCircle::from_command("ls");
+        holy.sanctify();
+        let mut summoned = MagicCircle::from_command("ls");
+        summoned.summon();
+        for c in [&forbidden, &holy, &summoned] {
+            assert!(gradient(c, "ls"));
+        }
+        // 展開のコマも同じ
+        assert!(frame(&ultimate, &spell, 0.5).contains(r#"fill="url(#aurora)""#));
+    }
+
     fn with_band(band: Band) -> (MagicCircle, String) {
         (0..)
             .map(|i| format!("cmd {i}"))
