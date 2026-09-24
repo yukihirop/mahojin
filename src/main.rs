@@ -52,13 +52,14 @@ fn usage(l: Locale) -> String {
             "図鑑を開く。これまでに集めた魔法陣の種類を見る",
             "Open the grimoire: see which kinds of circles you've collected",
         ),
+        ("--help, -h", "この説明を表示する", "Show this help"),
     ];
     let mut s = String::from(
         "usage: maho [options] <command> [args...]
        maho [options] \"<shell command>\"
        maho --setup [--locale <ja|en>]
        maho --grimoire
-       maho init zsh
+       maho init <zsh|bash|fish>
        maho on | off
 ",
     );
@@ -78,6 +79,7 @@ struct Options {
     no_run: bool,
     setup: bool,
     grimoire: bool,
+    help: bool,
     locale: Option<Locale>,
     svg_path: Option<String>,
     command: Vec<String>,
@@ -148,6 +150,7 @@ fn parse_args(
             "--no-run" => opts.no_run = true,
             "--setup" => opts.setup = true,
             "--grimoire" => opts.grimoire = true,
+            "--help" | "-h" => opts.help = true,
             "--svg" => {
                 args.pop_front();
                 let path = args.front().ok_or(ArgError::MissingValue("--svg"))?;
@@ -169,6 +172,9 @@ fn parse_args(
         args.pop_front();
     }
     opts.command = args.into();
+    if opts.help {
+        return Ok(());
+    }
     match (opts.setup, opts.grimoire, opts.command.is_empty()) {
         (true, _, false) => Err(ArgError::SetupWithCommand),
         (_, true, false) => Err(ArgError::GrimoireWithCommand),
@@ -191,6 +197,10 @@ fn main() -> ExitCode {
         eprintln!("maho: {}\n{}", e.message(l), usage(l));
         return ExitCode::from(2);
     }
+    if opts.help {
+        println!("{}", usage(l));
+        return ExitCode::SUCCESS;
+    }
     if opts.setup {
         return setup(opts.locale, (l, source), config_path);
     }
@@ -206,8 +216,8 @@ fn main() -> ExitCode {
             eprintln!(
                 "maho: {}",
                 l.pick(
-                    "maho on / off には、.zshrc に eval \"$(maho init zsh)\" を書いてシェルを開き直してください",
-                    "maho on / off needs eval \"$(maho init zsh)\" in your .zshrc; then open a new shell",
+                    "maho on / off には、シェルの設定に maho init を書いてシェルを開き直してください（README の「詠唱モード」）",
+                    "maho on / off needs maho init in your shell config; then open a new shell (see \"Chanting mode\" in the README)",
                 )
             );
             return ExitCode::from(2);
@@ -220,9 +230,9 @@ fn main() -> ExitCode {
     let circle = MagicCircle::from_command(&spell);
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
     // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
-    let protocol = terminal::detect(|k| std::env::var(k).ok());
+    let target = terminal::detect(|k| std::env::var(k).ok(), terminal::ask_tmux);
     let frames = animation(&circle, &spell);
-    let drawn = match terminal::play(&frames, FRAME_INTERVAL, protocol, circle.tier.rows()) {
+    let drawn = match terminal::play(&frames, FRAME_INTERVAL, target, circle.tier.rows()) {
         Ok(drawn) => drawn,
         Err(e) => {
             match l {
@@ -369,14 +379,15 @@ fn open_grimoire(path: Option<PathBuf>, l: Locale) -> ExitCode {
 }
 
 fn init(shell: &str, l: Locale) -> ExitCode {
-    if shell != "zsh" {
+    let Some(script) = shell::init(shell, l) else {
+        let known = shell::SHELLS.join(" / ");
         match l {
-            Locale::Ja => eprintln!("maho: {shell} にはまだ対応していません（今は zsh だけ）"),
-            Locale::En => eprintln!("maho: {shell} isn't supported yet (only zsh for now)"),
+            Locale::Ja => eprintln!("maho: {shell} にはまだ対応していません（{known}）"),
+            Locale::En => eprintln!("maho: {shell} isn't supported yet ({known})"),
         }
         return ExitCode::from(2);
-    }
-    print!("{}", shell::zsh(l));
+    };
+    print!("{script}");
     ExitCode::SUCCESS
 }
 
@@ -566,6 +577,17 @@ mod tests {
             parse(&["--locale"]),
             Err(ArgError::MissingValue("--locale"))
         );
+    }
+
+    #[test]
+    fn help() {
+        assert!(parse(&["--help"]).unwrap().help);
+        assert!(parse(&["-h"]).unwrap().help);
+        assert!(parse(&["--locale", "en", "--help"]).unwrap().help);
+        // コマンドの後ろの --help はコマンドのもの
+        let o = parse(&["git", "--help"]).unwrap();
+        assert!(!o.help);
+        assert_eq!(o.command, cmd(&["git", "--help"]));
     }
 
     #[test]

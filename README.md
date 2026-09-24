@@ -48,6 +48,7 @@ maho "cargo build && ls"      # a single argument containing spaces goes to the 
 | `--locale <ja\|en>` | Use this language for this run |
 | `--setup` | Show settings; with `--locale`, save that language |
 | `--grimoire` | Open the grimoire: see which kinds of circles you've collected |
+| `--help`, `-h` | Show usage |
 
 Options go only before the command. In `maho cargo --explain E0308`, `--explain` belongs to cargo.
 
@@ -77,14 +78,15 @@ Arguments are part of the spell, so `release v1.2.0` and `release v1.3.0` get di
 tiers. A release that draws an ultimate spell is surely blessed. You can still `alias git='maho git'` if
 you want a circle every time, but the seconds do add up.
 
-### Chanting mode (zsh)
+### Chanting mode
 
 Sometimes you want a circle on every command, just for the length of a release. Add one line to your
-`.zshrc`, and between `maho on` and `maho off` every command you type unfolds a circle.
+shell config, and between `maho on` and `maho off` every command you type unfolds a circle.
 
 ```sh
-# ~/.zshrc
-eval "$(maho init zsh)"
+eval "$(maho init zsh)"     # ~/.zshrc
+eval "$(maho init bash)"    # ~/.bashrc
+maho init fish | source     # ~/.config/fish/config.fish
 ```
 
 ```console
@@ -96,8 +98,12 @@ $ maho off
 
 It doesn't put `maho` in front of your commands. It draws the circle just before each command runs and
 leaves the running to the shell, so `cd`, aliases and pipes all work as usual. It only lasts for that
-shell. The shells coding agents type into don't load your interactive `.zshrc`, so the circles only
+shell. The shells coding agents type into don't load your interactive config, so the circles only
 appear when a human types.
+
+bash has no pre-command hook like zsh and fish do, so maho builds one from the DEBUG trap. If
+[bash-preexec](https://github.com/rcaloras/bash-preexec) is loaded first, it hooks into that instead.
+If something else already uses the DEBUG trap, maho stays out and tells you so.
 
 ### Showing off your circle
 
@@ -197,9 +203,20 @@ What each kind looks like is for you to find out by casting. The ones you've met
 | --- | --- |
 | Ghostty / Kitty | Kitty graphics protocol |
 | iTerm2 / WezTerm | iTerm2 inline images |
-| Anything else / inside tmux | No image, just the line `✦ Magic circle unfolded: <command>` |
+| Inside tmux (3.3 or later) | Passed through to the terminal outside, if passthrough is on |
+| Anything else | No image, just the line `✦ Magic circle unfolded: <command>` |
 
 When stderr is not a terminal (for example when redirected), nothing is shown.
+
+tmux drops image escape sequences unless you let them through. Add this to `~/.tmux.conf`:
+
+```tmux
+set -g allow-passthrough on
+```
+
+Inside tmux, Ghostty and Kitty get the image through Unicode placeholders, so it stays tied to its text
+cells and scrolls and redraws with tmux. iTerm2 has no such mechanism, so maho works out where the pane
+sits on the outer screen and draws there; the image may linger when you switch windows.
 
 | Environment variable | Meaning |
 | --- | --- |
