@@ -138,11 +138,13 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     s
 }
 
-/// 極大魔法から上は、画面の上から下へ流れるグラデーションで光る。上・真ん中・下の色を返す。
-/// 色相は魔法陣のものから決めるので、極大魔法どうしでも見分けられる。
+/// 極大魔法から上は、呪文が暴走したとき（`aurora`）だけ、画面の上から下へ流れるグラデーションで光る。
+/// 上・真ん中・下の色を返す。色相は魔法陣のものから決めるので、極大魔法どうしでも見分けられる。
 fn aurora(c: &MagicCircle) -> Option<[(f32, f32, f32); 3]> {
     let hue = |d: f32| (c.hue + d).rem_euclid(360.0);
-    if c.holy {
+    if !c.aurora {
+        None
+    } else if c.holy {
         // 白金から金、裾は赤金へ
         Some([(50.0, 100.0, 88.0), (c.hue, 95.0, 68.0), (36.0, 95.0, 60.0)])
     } else if c.forbidden {
@@ -1300,11 +1302,15 @@ mod tests {
 
     /// 帯が `band` の魔法陣になるコマンド
     #[test]
-    fn ultimate_and_above_shine_in_a_gradient() {
+    fn runaway_ultimate_and_above_shine_in_a_gradient() {
+        let runaway = |mut c: MagicCircle| {
+            c.aurora = true;
+            c
+        };
         let find = |tier: Tier| {
             (0..)
                 .map(|i| format!("git tag v1.{i}.0"))
-                .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
+                .map(|cmd| (runaway(MagicCircle::from_command(&cmd)), cmd))
                 .find(|(c, _)| c.tier == tier)
                 .unwrap()
         };
@@ -1312,10 +1318,14 @@ mod tests {
             |c: &MagicCircle, spell: &str| svg(c, spell).contains(r#"fill="url(#aurora)""#);
         let (ultimate, spell) = find(Tier::Ultimate);
         assert!(gradient(&ultimate, &spell));
+        // 暴走しなければ、極大魔法もいつもの単色
+        let mut calm = ultimate.clone();
+        calm.aurora = false;
+        assert!(!gradient(&calm, &spell));
         // 極大魔法どうしでも、色相が違えば色も違う
         let (other, other_spell) = (0..)
             .map(|i| format!("git tag v2.{i}.0"))
-            .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
+            .map(|cmd| (runaway(MagicCircle::from_command(&cmd)), cmd))
             .find(|(c, _)| c.tier == Tier::Ultimate && (c.hue - ultimate.hue).abs() > 30.0)
             .unwrap();
         assert_ne!(aurora(&ultimate), aurora(&other));
@@ -1325,12 +1335,12 @@ mod tests {
             assert!(!gradient(&c, &spell), "{tier:?}");
             assert!(aurora(&c).is_none());
         }
-        // 隠し魔法は、引いた格にかかわらずグラデーションになる
-        let mut forbidden = MagicCircle::from_command("ls");
+        // 隠し魔法は、引いた格にかかわらず暴走すればグラデーションになる
+        let mut forbidden = runaway(MagicCircle::from_command("ls"));
         forbidden.forbid();
-        let mut holy = MagicCircle::from_command("ls");
+        let mut holy = runaway(MagicCircle::from_command("ls"));
         holy.sanctify();
-        let mut summoned = MagicCircle::from_command("ls");
+        let mut summoned = runaway(MagicCircle::from_command("ls"));
         summoned.summon();
         for c in [&forbidden, &holy, &summoned] {
             assert!(gradient(c, "ls"));

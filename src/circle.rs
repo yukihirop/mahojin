@@ -229,6 +229,9 @@ pub struct MagicCircle {
     pub hand: Hand,
     pub band: Band,
     pub tier: Tier,
+    /// 呪文の暴走。極大魔法から上がグラデーションで光る。それより下の格では何も変わらない。
+    /// 唱えるたびの運で決まるので、`from_hash` では常に false
+    pub aurora: bool,
     /// 禁呪。ハッシュではなくコマンドの中身で決まるので、`from_hash` では常に false
     pub forbidden: bool,
     /// 神聖魔法。禁呪と同じく、`from_hash` では常に false
@@ -272,6 +275,7 @@ impl MagicCircle {
             },
             band: Band::ALL[below(&mut rng, Band::ALL.len() as u32) as usize],
             tier: Tier::from_roll(below(&mut rng, 100)),
+            aurora: false,
             forbidden: false,
             holy: false,
             summoned: false,

@@ -298,6 +298,11 @@ fn main() -> ExitCode {
     } else if let Some(omen) = omen::Moment::now(env).and_then(omen::at) {
         circle.bless(omen);
     }
+    // 呪文の暴走はハッシュではなく、唱えるたびの運で決まる。
+    // 砕けるときは展開したときとは別に呼ばれるので、引き直さずにいつもの色で砕く
+    if opts.shatter.is_none() {
+        circle.aurora = runaway(luck());
+    }
     if let Some(code) = opts.shatter {
         // 作者はコマンドとしてはいないので見つからない（127）が、呼べば現れる
         if code == NOT_FOUND && circle.summoned {
@@ -394,6 +399,32 @@ fn main() -> ExitCode {
             })
         }
     }
+}
+
+/// 呪文が暴走する確率（%）。極大魔法から上がグラデーションで光る。いつもだと飽きるので、たまにだけ
+const RUNAWAY_PERCENT: u32 = 5;
+
+/// 0〜99 の運が `RUNAWAY_PERCENT` を下回れば暴走する。
+fn runaway(luck: u32) -> bool {
+    luck % 100 < RUNAWAY_PERCENT
+}
+
+/// 唱えるたびに変わる運。時刻とプロセス ID と呼んだ回数を混ぜて乱数の種にする。
+fn luck() -> u32 {
+    use rand_core::{Rng, SeedableRng};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static CALLS: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos() as u64);
+    rand_chacha::ChaCha8Rng::seed_from_u64(
+        nanos
+            ^ (u64::from(std::process::id()) << 32)
+            ^ CALLS
+                .fetch_add(1, Ordering::Relaxed)
+                .wrapping_mul(0x9e37_79b9_7f4a_7c15),
+    )
+    .next_u32()
 }
 
 /// 展開アニメーションのコマ数と間隔。合わせて 0.7 秒ほどで、待たされる感じを出さない。
@@ -834,6 +865,15 @@ mod tests {
             parse(&["--locale"]),
             Err(ArgError::MissingValue("--locale"))
         );
+    }
+
+    #[test]
+    fn runaway_is_rare() {
+        let hits = (0..100).filter(|&l| runaway(l)).count();
+        assert_eq!(hits, RUNAWAY_PERCENT as usize);
+        // 運は唱えるたびに変わる
+        let lucks: std::collections::HashSet<u32> = (0..50).map(|_| luck()).collect();
+        assert!(lucks.len() > 40);
     }
 
     #[test]
