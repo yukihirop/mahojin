@@ -8,6 +8,7 @@ use rand_core::{Rng, SeedableRng};
 use sha2::{Digest, Sha256};
 
 use crate::locale::Locale;
+use crate::omen::Omen;
 use crate::script::{Hand, Separator, Style};
 
 /// 魔法陣の中心に据える図形。ハッシュの先頭バイトがそのまま決める。
@@ -226,6 +227,8 @@ pub struct MagicCircle {
     pub tier: Tier,
     /// 禁呪。ハッシュではなくコマンドの中身で決まるので、`from_hash` では常に false
     pub forbidden: bool,
+    /// 暦の兆し。唱えた日時で決まるので、`from_hash` では常に `None`
+    pub omen: Option<Omen>,
 }
 
 impl MagicCircle {
@@ -262,6 +265,7 @@ impl MagicCircle {
             band: Band::ALL[below(&mut rng, Band::ALL.len() as u32) as usize],
             tier: Tier::from_roll(below(&mut rng, 100)),
             forbidden: false,
+            omen: None,
         }
     }
 
@@ -270,6 +274,15 @@ impl MagicCircle {
         self.forbidden = true;
         self.hue = FORBIDDEN_HUE;
         self.clockwise = false;
+    }
+
+    /// 暦の色に染める。形はハッシュのまま。13 日の金曜日だけは逆さに回す。
+    pub fn bless(&mut self, omen: Omen) {
+        self.omen = Some(omen);
+        self.hue = omen.palette().main.0;
+        if omen == Omen::Friday13 {
+            self.clockwise = false;
+        }
     }
 
     /// 格の名前。禁呪は引いた格にかかわらず超極大魔法になり、禁呪であることも名乗る。
@@ -311,6 +324,19 @@ mod tests {
             MagicCircle::from_command("git status"),
             MagicCircle::from_command("git status")
         );
+    }
+
+    #[test]
+    fn omens_change_only_the_colors() {
+        let plain = MagicCircle::from_command("git status");
+        let mut blessed = plain.clone();
+        blessed.bless(Omen::Halloween);
+        assert_eq!(blessed.hue, 28.0);
+        assert_eq!((blessed.shape, blessed.tier), (plain.shape, plain.tier));
+        assert_eq!(blessed.clockwise, plain.clockwise);
+        // 13 日の金曜日だけは逆さに回る
+        blessed.bless(Omen::Friday13);
+        assert!(!blessed.clockwise);
     }
 
     #[test]

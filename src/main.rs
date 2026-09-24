@@ -3,6 +3,7 @@ mod config;
 mod forbidden;
 mod grimoire;
 mod locale;
+mod omen;
 mod render;
 mod script;
 mod share;
@@ -268,8 +269,11 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut circle = MagicCircle::from_command(&spell);
+    // 禁呪は暦より強い。深紅のまま
     if forbidden::is_forbidden(&spell) {
         circle.forbid();
+    } else if let Some(omen) = omen::Moment::now(env).and_then(omen::at) {
+        circle.bless(omen);
     }
     if let Some(code) = opts.shatter {
         if shatters(code, &config) {
@@ -296,11 +300,8 @@ fn main() -> ExitCode {
     } else if !drawn && std::io::stderr().is_terminal() {
         // 絵を出せない端末でも、魔法が発動したことだけは伝える
         eprintln!("{}", unfolded(&spell, &circle, l));
-    } else if drawn && circle.forbidden {
-        eprintln!("✦ {}", circle.title(l));
-    } else if drawn && matches!(circle.tier, Tier::Large | Tier::Ultimate) {
-        // 出にくい格を引いたときだけ、何が出たかを名乗る
-        eprintln!("✦ {}", circle.tier.name(l));
+    } else if drawn && let Some(title) = announced(&circle, l) {
+        eprintln!("✦ {title}");
     }
     if grimoire::enabled(env)
         && let Some(path) = &grimoire_path
@@ -552,6 +553,17 @@ fn setup(
     ExitCode::SUCCESS
 }
 
+/// 描いた魔法陣の下で名乗る言葉。出にくい格か禁呪を引いたときと、暦の兆しがあるときだけ。
+fn announced(c: &MagicCircle, l: Locale) -> Option<String> {
+    let rare = c.forbidden || matches!(c.tier, Tier::Large | Tier::Ultimate);
+    let names: Vec<&str> = rare
+        .then(|| c.title(l))
+        .into_iter()
+        .chain(c.omen.map(|o| o.name(l)))
+        .collect();
+    (!names.is_empty()).then(|| names.join(" / "))
+}
+
 fn unfolded(spell: &str, c: &MagicCircle, l: Locale) -> String {
     let what = if c.forbidden {
         l.pick(
@@ -561,13 +573,22 @@ fn unfolded(spell: &str, c: &MagicCircle, l: Locale) -> String {
     } else {
         l.pick("魔法陣展開", "Magic circle unfolded")
     };
-    format!("✦ {what}: {spell}")
+    match c.omen {
+        Some(o) => format!(
+            "✦ {what}{}: {spell}",
+            l.pick("（", " (").to_owned() + o.name(l) + l.pick("）", ")")
+        ),
+        None => format!("✦ {what}: {spell}"),
+    }
 }
 
 fn explain(spell: &str, c: &MagicCircle, l: Locale) {
     eprintln!("{}", unfolded(spell, c, l));
     eprintln!("  hash      {}", c.hash_hex());
     eprintln!("  tier      {}", c.title(l));
+    if let Some(o) = c.omen {
+        eprintln!("  omen      {}", o.name(l));
+    }
     eprintln!(
         "  layout {}  shape {}  ornament {}  rings {}  symmetry {}  runes {}  particles {}",
         c.layout.name(l),

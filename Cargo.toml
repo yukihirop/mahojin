@@ -11,6 +11,7 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 base64 = "0.23.1"
+libc = "0.2"
 rand_chacha = "0.10.0"
 rand_core = "0.10.1"
 resvg = { version = "0.48.1", default-features = false, features = ["raster-images"] }

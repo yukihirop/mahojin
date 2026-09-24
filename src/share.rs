@@ -14,17 +14,20 @@ pub fn post(c: &MagicCircle, spell: &str, l: Locale) -> String {
     let (layout, shape, ornament) = (c.layout.name(l), c.shape.name(l), c.ornament.name(l));
     let (spell, sigil) = (shorten(spell), &c.hash_hex()[..8]);
     let tier = c.title(l);
+    let when = c.omen.map(|o| o.when(l));
     let body = match l {
         Locale::Ja => format!(
-            "「{spell}」を唱えたら、{tier}の魔法陣が展開した ✦\n\n\
+            "「{spell}」を{}唱えたら、{tier}の魔法陣が展開した ✦\n\n\
              {layout}の陣 / {shape} / {ornament} / {} 回対称\n\
              呪紋 {sigil}",
+            when.unwrap_or_default(),
             c.symmetry
         ),
         Locale::En => format!(
-            "I cast \"{spell}\" and {} {tier} circle unfolded ✦\n\n\
+            "I cast \"{spell}\"{} and {} {tier} circle unfolded ✦\n\n\
              {layout} layout / {shape} / {ornament} / {}-fold symmetry\n\
              Sigil {sigil}",
+            when.map(|w| format!(" {w}")).unwrap_or_default(),
             if tier.starts_with(['a', 'e', 'i', 'o', 'u']) {
                 "an"
             } else {
@@ -98,6 +101,19 @@ mod tests {
         );
         assert!(p.contains("breach layout / wheel / star / 3-fold symmetry"));
         assert!(p.contains("Sigil e62b04aa"));
+    }
+
+    #[test]
+    fn post_names_the_omen() {
+        let mut c = MagicCircle::from_command("git status");
+        c.bless(crate::omen::Omen::FullMoon);
+        assert!(
+            post(&c, "git status", Locale::Ja).starts_with("「git status」を満月の夜に唱えたら、")
+        );
+        assert!(
+            post(&c, "git status", Locale::En)
+                .starts_with("I cast \"git status\" on a full moon night and a major spell")
+        );
     }
 
     #[test]

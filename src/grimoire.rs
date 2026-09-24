@@ -4,13 +4,15 @@
 //! コマンドは書かず、ハッシュと唱えた回数だけを 1 行ずつ残す。
 //! パラメータはハッシュから引き直せるので、それで足りる（[`MagicCircle::from_hash`]）。
 //! 禁呪かどうかだけはハッシュから分からないので、3 つめの欄に印を書く（`forbidden` か `doom:balse` など）。
+//! 暦の兆しは呪文ではなく日時のものなので、出会ったものを `omen full-moon` のように別の行に残す。
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::circle::{Band, Layout, MagicCircle, Ornament, SYMMETRIES, Shape, Tier};
 use crate::forbidden::Doom;
 use crate::locale::Locale;
+use crate::omen::Omen;
 use crate::script::Style;
 
 const HEADER: &str = "# maho grimoire v2";
@@ -28,6 +30,8 @@ pub enum Item {
     /// ここからは頁に並ばない隠し項目。禁呪を唱えて初めて図鑑に現れる
     Forbidden,
     Doom(Doom),
+    /// 暦の兆しがある日時に唱えて初めて現れる
+    Omen(Omen),
 }
 
 impl Item {
@@ -53,6 +57,10 @@ impl Item {
             Item::Doom(d) => match l {
                 Locale::Ja => format!("物語の呪文「{}」", d.name(l)),
                 Locale::En => format!("story spell \"{}\"", d.name(l)),
+            },
+            Item::Omen(o) => match l {
+                Locale::Ja => format!("暦「{}」", o.name(l)),
+                Locale::En => format!("omen \"{}\"", o.name(l)),
             },
         }
     }
@@ -152,11 +160,17 @@ pub const SKELETONS: usize = Shape::ALL.len() * Layout::ALL.len() * Tier::ALL.le
 pub struct Grimoire {
     /// 初めて唱えた順に、ハッシュと唱えた回数と禁呪の印
     entries: Vec<Entry>,
+    /// 出会った暦の兆し
+    omens: BTreeSet<Omen>,
 }
 
 impl Grimoire {
     /// 読めない行は飛ばす。ファイルが無ければ空の図鑑。
     pub fn parse(text: &str) -> Self {
+        let omens = text
+            .lines()
+            .filter_map(|line| Omen::from_key(line.strip_prefix("omen ")?.trim()))
+            .collect();
         let entries = text
             .lines()
             .filter_map(|line| {
@@ -168,7 +182,7 @@ impl Grimoire {
                 })
             })
             .collect();
-        Grimoire { entries }
+        Grimoire { entries, omens }
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -188,6 +202,9 @@ impl Grimoire {
                 None => s.push_str(&format!("{hex} {}\n", e.count)),
             }
         }
+        for o in &self.omens {
+            s.push_str(&format!("omen {}\n", o.key()));
+        }
         s
     }
 
@@ -204,6 +221,16 @@ impl Grimoire {
     /// 唱えた魔法陣を記録し、今回初めて埋まった項目を返す。
     /// `doom` は、物語の滅びの呪文を唱えたときにどれだったか。
     pub fn record(&mut self, c: &MagicCircle, doom: Option<Doom>) -> Vec<Item> {
+        let mut new = self.record_circle(c, doom);
+        if let Some(o) = c.omen
+            && self.omens.insert(o)
+        {
+            new.push(Item::Omen(o));
+        }
+        new
+    }
+
+    fn record_circle(&mut self, c: &MagicCircle, doom: Option<Doom>) -> Vec<Item> {
         let mark = Mark::of(c, doom);
         let index = self.entries.iter().position(|e| e.hash == c.hash);
         // 前にも唱えた呪文なら、埋まる項目は無い。
@@ -401,6 +428,25 @@ pub fn show(g: &Grimoire, l: Locale) -> String {
             names.join(l.pick("  ", ", "))
         ));
     }
+    // 暦の欄も、兆しに 1 度でも出会うまで出さない
+    if !g.omens.is_empty() {
+        let names: Vec<&str> = Omen::ALL
+            .iter()
+            .map(|o| {
+                if g.omens.contains(o) {
+                    o.name(l)
+                } else {
+                    unknown
+                }
+            })
+            .collect();
+        s.push_str(&format!(
+            "\n  {} {:>6}  {}\n",
+            pad(l.pick("暦", "omens"), 10),
+            format!("{}/{}", g.omens.len(), Omen::ALL.len()),
+            names.join(l.pick("  ", ", "))
+        ));
+    }
     if have == total {
         s.push_str(l.pick(
             "\n✦ 図鑑が埋まりました。骨格も集めてみてください\n",
@@ -425,7 +471,6 @@ fn bar(have: usize, total: usize, width: usize) -> String {
     format!("{}{}", "█".repeat(filled), "░".repeat(width - filled))
 }
 
-/// 全角を 2 桁と数えて右を空白で埋める。
 /// 英語の「1 spell」「2 spells」
 fn plural(n: u64, word: &str) -> String {
     if n == 1 {
@@ -435,6 +480,7 @@ fn plural(n: u64, word: &str) -> String {
     }
 }
 
+/// 全角を 2 桁と数えて右を空白で埋める。
 fn pad(s: &str, width: usize) -> String {
     let w: usize = s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum();
     format!("{s}{}", " ".repeat(width.saturating_sub(w)))
@@ -497,6 +543,7 @@ mod tests {
                     mark: Mark::None,
                 })
                 .collect(),
+            omens: BTreeSet::new(),
         };
         let total: usize = pages().iter().map(|(_, _, items)| items.len()).sum();
         assert_eq!(g.items().len(), total);
@@ -536,6 +583,28 @@ mod tests {
         let page = show(&g, Locale::Ja);
         assert!(page.contains("1/4") && page.contains("バルス  ？？？"));
         assert!(page.contains("2 種"));
+    }
+
+    #[test]
+    fn omens_open_a_hidden_section() {
+        let mut g = Grimoire::default();
+        let mut c = MagicCircle::from_command("git status");
+        g.record(&c, None);
+        assert!(!show(&g, Locale::Ja).contains("暦"));
+        // 前に唱えた呪文でも、初めての兆しなら記録する
+        c.bless(Omen::FullMoon);
+        assert_eq!(g.record(&c, None), vec![Item::Omen(Omen::FullMoon)]);
+        assert!(g.record(&c, None).is_empty());
+        assert_eq!(g.casts(), (1, 3));
+        let page = show(&g, Locale::Ja);
+        assert!(
+            page.contains("1/6") && page.contains("？？？  満月の夜"),
+            "{page}"
+        );
+        // 兆しは別の行に残り、読み直しても消えない
+        let text = g.to_text();
+        assert!(text.ends_with("omen full-moon\n"));
+        assert_eq!(Grimoire::parse(&text), g);
     }
 
     #[test]

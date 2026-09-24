@@ -242,6 +242,7 @@ name = "maho"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "libc",
  "rand_chacha",
  "rand_core",
  "resvg",

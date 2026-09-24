@@ -11,6 +11,7 @@ use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 
 use crate::circle::{Band, FORBIDDEN_HUE, Layout, MagicCircle, Ornament, Shape, Tier, unit};
+use crate::omen::Palette;
 use crate::script;
 
 const SIZE: f32 = 1000.0;
@@ -81,6 +82,29 @@ impl Stages {
     }
 }
 
+/// 魔法陣の色。ふつうは色相から決め、粒子は補色で光る。禁呪の粒子は火の粉になる。
+/// 暦の兆しがあればその色にする。主の色相だけは魔法陣のものを使い、重ねた魔法陣を見分けられるようにする。
+fn palette(c: &MagicCircle) -> Palette {
+    if let Some(omen) = c.omen {
+        let mut p = omen.palette();
+        p.main.0 = c.hue;
+        return p;
+    }
+    Palette {
+        main: (c.hue, 85.0, 65.0),
+        sub: ((c.hue + 35.0) % 360.0, 80.0, 55.0),
+        particle: if c.forbidden {
+            (20.0, 90.0, 80.0)
+        } else {
+            ((c.hue + 180.0) % 360.0, 90.0, 80.0)
+        },
+    }
+}
+
+fn hsl((h, s, l): (f32, f32, f32)) -> String {
+    format!("hsl({h:.0},{s:.0}%,{l:.0}%)")
+}
+
 /// ease-out cubic。勢いよく出て、すっと収まる。
 fn ease(x: f32) -> f32 {
     1.0 - (1.0 - x).powi(3)
@@ -130,13 +154,7 @@ fn scene(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>) {
     } else {
         c.particles
     };
-    // 粒子はふつう補色で光る。禁呪では火の粉になる
-    let particle_hue = if c.forbidden {
-        20.0
-    } else {
-        (c.hue + 180.0) % 360.0
-    };
-    particles(s, &mut rng, particles_count, particle_hue);
+    particles(s, &mut rng, particles_count, palette(c).particle);
     let reach = match c.tier {
         // 禁呪は、引いた格にかかわらず超極大魔法になる
         _ if c.forbidden => {
@@ -160,9 +178,9 @@ fn scene(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>) {
     if st.flash > 0.0 {
         writeln!(
             s,
-            r#"<circle r="{:.1}" fill="hsl({:.0},85%,65%)" opacity="{:.3}"/>"#,
+            r#"<circle r="{:.1}" fill="{}" opacity="{:.3}"/>"#,
             reach,
-            c.hue,
+            hsl(palette(c).main),
             0.18 * st.flash
         )
         .unwrap();
@@ -262,9 +280,8 @@ pub fn shatter(c: &MagicCircle, picture: &[u8], t: f32) -> String {
 /// `rng` はルーンの字形に使う。
 fn body(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>, rng: &mut ChaCha8Rng) {
     let st = Stages::at(t);
-    let hue = c.hue;
-    let main = format!("hsl({hue:.0},85%,65%)");
-    let sub = format!("hsl({:.0},80%,55%)", (hue + 35.0) % 360.0);
+    let colors = palette(c);
+    let (main, sub) = (hsl(colors.main), hsl(colors.sub));
     let dir = if c.clockwise { 1.0 } else { -1.0 };
     let scale = scale_of(c);
 
@@ -495,6 +512,11 @@ fn companion(c: &MagicCircle, spell: &str, index: u8, hue_shift: f32) -> MagicCi
     if c.forbidden {
         d.forbid();
         d.hue = (FORBIDDEN_HUE + hue_shift / 12.0) % 360.0;
+    }
+    // 暦の色も重ねた魔法陣まで染める。ずらし方は禁呪と同じく小さく
+    if let Some(omen) = c.omen {
+        d.bless(omen);
+        d.hue = (c.hue + hue_shift / 12.0) % 360.0;
     }
     // 小さく置くものは、外へはみ出す多角形を付けず、小魔法と同じく簡略に描く
     if index > 0 {
@@ -1098,8 +1120,8 @@ fn polygon(s: &mut String, n: u8, r: f32, offset: f32, width: f32) {
 }
 
 /// 魔法陣の周りに漂う光の粒。
-fn particles(s: &mut String, rng: &mut ChaCha8Rng, count: u16, hue: f32) {
-    writeln!(s, r#"<g fill="hsl({hue:.0},90%,80%)">"#).unwrap();
+fn particles(s: &mut String, rng: &mut ChaCha8Rng, count: u16, color: (f32, f32, f32)) {
+    writeln!(s, r#"<g fill="{}">"#, hsl(color)).unwrap();
     for _ in 0..count {
         // 面積あたり一様になるよう半径は平方根で取る
         let r = unit(rng).sqrt() * SIZE / 2.0;
@@ -1269,6 +1291,23 @@ mod tests {
         // 呪文の帯にはルーンが無い
         let (c, spell) = with_band(Band::Script);
         assert_eq!(svg(&c, &spell).matches(RUNE).count(), 0);
+    }
+
+    #[test]
+    fn omens_repaint_every_circle() {
+        let (c, spell) = (0..)
+            .map(|i| format!("make release{i}"))
+            .map(|cmd| (MagicCircle::from_command(&cmd), cmd))
+            .find(|(c, _)| c.tier == Tier::Ultimate)
+            .unwrap();
+        let mut halloween = c.clone();
+        halloween.bless(crate::omen::Omen::Halloween);
+        let out = svg(&halloween, &spell);
+        // 重ねた魔法陣まで、かぼちゃの橙と紫になる
+        let main = out.matches(",95%,58%)").count();
+        assert!(main > orbit_count(&c) as usize, "{main}");
+        assert!(out.contains("hsl(275,70%,62%)") && out.contains("hsl(275,90%,80%)"));
+        assert!(!out.contains(",85%,65%)"));
     }
 
     #[test]
