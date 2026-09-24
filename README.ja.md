@@ -47,6 +47,9 @@ alias git='maho git'
 | --- | --- |
 | `--explain` | 魔法陣のハッシュと、そこから引いたパラメータを表示する |
 | `--svg <file>` | 魔法陣を SVG に書き出す |
+| `--share` | コマンドは実行せず、X などに貼る投稿文と画像を作る |
+| `--locale <ja\|en>` | 今回だけ表示の言語を変える |
+| `--setup` | 設定を表示する。`--locale` と一緒なら、その言語を保存する |
 
 オプションはコマンドより前にだけ置けます。`maho cargo --explain E0308` の `--explain` は cargo のものです。
 
@@ -57,6 +60,39 @@ $ maho --explain git status
   layout 突破  shape 車輪  ornament 星形  rings 5  symmetry 3  runes 27  particles 398
   rotation 265.3°  hue 288.8°  右回り
 ```
+
+### 魔法陣を見せびらかす
+
+```console
+$ maho --share git status | pbcopy
+```
+
+コマンドは実行しません。投稿文を stdout に、1200px の画像（`maho-<ハッシュ先頭8桁>.png`）を
+今のディレクトリに書き出し、投稿文が入った X の投稿画面の URL を stderr に出します。画像は手で添えてください。
+
+```text
+「git status」を唱えたら、この魔法陣が展開した ✦
+
+突破の陣 / 車輪 / 星形 / 3 回対称
+呪紋 e62b04aa
+
+#maho
+https://github.com/yukihirop/maho
+```
+
+### 表示の言語
+
+メッセージ・図形の名前・投稿文は、日本語と英語を切り替えられます。
+
+```sh
+maho --setup --locale ja   # 日本語を保存する
+maho --setup               # 今の言語と、それがどこから決まったかを表示する
+maho --locale en ls        # 今回だけ英語
+```
+
+決まる順番は `--locale` > `MAHO_LOCALE` > 設定ファイル
+（`$XDG_CONFIG_HOME/maho/config`、無ければ `~/.config/maho/config`）> `LC_ALL` / `LC_MESSAGES` / `LANG`
+（`ja` で始まれば日本語）> 英語 です。
 
 ## 魔法陣の決まり方
 
@@ -82,6 +118,7 @@ stderr が端末でないとき（リダイレクト中など）は何も出し�
 | --- | --- |
 | `MAHO_GRAPHICS=kitty\|iterm\|none` | 自動判定をやめて方式を固定する |
 | `MAHO_ANIMATION=off` | 展開アニメーションをやめ、完成図 1 枚だけ出す |
+| `MAHO_LOCALE=ja\|en` | 設定ファイルより優先して、この言語で表示する |
 
 ## README の画像を作り直す
 

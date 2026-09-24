@@ -47,18 +47,53 @@ alias git='maho git'
 | --- | --- |
 | `--explain` | Show the circle's hash and the parameters drawn from it |
 | `--svg <file>` | Write the circle out as SVG |
+| `--share` | Don't run the command; make a post text and image for X and the like |
+| `--locale <ja\|en>` | Use this language for this run |
+| `--setup` | Show settings; with `--locale`, save that language |
 
 Options go only before the command. In `maho cargo --explain E0308`, `--explain` belongs to cargo.
 
 ```console
 $ maho --explain git status
-✦ 魔法陣展開: git status
+✦ Magic circle unfolded: git status
   hash      e62b04aadf39df1a47b771265e4ae5c452df3f1903d5c263ab00f088e86102f6
-  layout 突破  shape 車輪  ornament 星形  rings 5  symmetry 3  runes 27  particles 398
-  rotation 265.3°  hue 288.8°  右回り
+  layout breach  shape wheel  ornament star  rings 5  symmetry 3  runes 27  particles 398
+  rotation 265.3°  hue 288.8°  clockwise
 ```
 
-(The output is in Japanese: 魔法陣展開 means "magic circle unfolded", 右回り means "clockwise".)
+### Showing off your circle
+
+```console
+$ maho --share git status | pbcopy
+```
+
+The command is not run. The post text goes to stdout, a 1200px image (`maho-<first 8 hex of the hash>.png`)
+is written to the current directory, and a URL that opens X's composer with the text filled in goes to stderr.
+Attach the image yourself.
+
+```text
+I cast "git status" and this magic circle unfolded ✦
+
+breach layout / wheel / star / 3-fold symmetry
+Sigil e62b04aa
+
+#maho
+https://github.com/yukihirop/maho
+```
+
+### Language
+
+Messages, names and the post text come in Japanese or English.
+
+```sh
+maho --setup --locale en   # save English as your language
+maho --setup               # show the current language and where it came from
+maho --locale ja ls        # Japanese just this once
+```
+
+The language is chosen in this order: `--locale` > `MAHO_LOCALE` > the config file
+(`$XDG_CONFIG_HOME/maho/config`, or `~/.config/maho/config`) > `LC_ALL` / `LC_MESSAGES` / `LANG`
+(Japanese if it starts with `ja`) > English.
 
 ## How a circle is decided
 
@@ -76,7 +111,7 @@ $ maho --explain git status
 | --- | --- |
 | Ghostty / Kitty | Kitty graphics protocol |
 | iTerm2 / WezTerm | iTerm2 inline images |
-| Anything else / inside tmux | No image, just the line `✦ 魔法陣展開: <command>` |
+| Anything else / inside tmux | No image, just the line `✦ Magic circle unfolded: <command>` |
 
 When stderr is not a terminal (for example when redirected), nothing is shown.
 
@@ -84,6 +119,7 @@ When stderr is not a terminal (for example when redirected), nothing is shown.
 | --- | --- |
 | `MAHO_GRAPHICS=kitty\|iterm\|none` | Skip detection and force a method |
 | `MAHO_ANIMATION=off` | Skip the unfolding animation and show only the finished circle |
+| `MAHO_LOCALE=ja\|en` | Use this language, overriding the config file |
 
 ## Regenerating the README images
 

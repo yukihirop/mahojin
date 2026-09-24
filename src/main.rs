@@ -1,63 +1,173 @@
 mod circle;
+mod locale;
 mod render;
 mod script;
+mod share;
 mod terminal;
 
 use std::io::IsTerminal;
+use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::time::Duration;
 
 use circle::MagicCircle;
+use locale::{Locale, Source};
 
-const USAGE: &str = "usage: maho [--explain] [--svg <file>] <command> [args...]
-       maho [--explain] [--svg <file>] \"<shell command>\"
+fn usage(l: Locale) -> String {
+    let lines = [
+        (
+            "--explain",
+            "魔法陣のハッシュとパラメータを表示する",
+            "Show the circle's hash and parameters",
+        ),
+        (
+            "--svg <file>",
+            "魔法陣を SVG に書き出す",
+            "Write the circle out as SVG",
+        ),
+        (
+            "--share",
+            "コマンドは実行せず、投稿文を stdout に、画像を今のディレクトリに出す",
+            "Don't run the command; print a post to stdout and save an image here",
+        ),
+        (
+            "--locale <ja|en>",
+            "今回だけ表示の言語を変える",
+            "Use this language for this run",
+        ),
+        (
+            "--setup",
+            "設定を表示する。--locale と一緒なら、その言語を保存する",
+            "Show settings; with --locale, save that language",
+        ),
+    ];
+    let mut s = String::from(
+        "usage: maho [options] <command> [args...]
+       maho [options] \"<shell command>\"
+       maho --setup [--locale <ja|en>]
+",
+    );
+    for (flag, ja, en) in lines {
+        s.push_str(&format!("\n  {flag:<18} {}", l.pick(ja, en)));
+    }
+    s
+}
 
-  --explain     魔法陣のハッシュとパラメータを表示する
-  --svg <file>  魔法陣を SVG に書き出す";
+/// `--share` で書き出す画像の一辺のピクセル数
+const SHARE_PIXELS: u32 = 1200;
 
 #[derive(Debug, Default, PartialEq)]
 struct Options {
     explain: bool,
+    share: bool,
+    setup: bool,
+    locale: Option<Locale>,
     svg_path: Option<String>,
     command: Vec<String>,
 }
 
+/// 引数の誤り。`--locale` を読み終えるまで表示の言語が決まらないので、文言は後で作る。
+#[derive(Debug, PartialEq)]
+enum ArgError {
+    MissingValue(&'static str),
+    UnknownLocale(String),
+    UnknownOption(String),
+    NoCommand,
+    SetupWithCommand,
+}
+
+impl ArgError {
+    fn message(&self, l: Locale) -> String {
+        match self {
+            ArgError::MissingValue("--svg") => l
+                .pick(
+                    "--svg にはファイルパスが要ります",
+                    "--svg needs a file path",
+                )
+                .into(),
+            ArgError::MissingValue(flag) => match l {
+                Locale::Ja => format!("{flag} には値が要ります"),
+                Locale::En => format!("{flag} needs a value"),
+            },
+            ArgError::UnknownLocale(v) => match l {
+                Locale::Ja => format!("知らない言語です: {v}（ja か en）"),
+                Locale::En => format!("unknown locale: {v} (ja or en)"),
+            },
+            ArgError::UnknownOption(a) => match l {
+                Locale::Ja => format!("知らないオプションです: {a}"),
+                Locale::En => format!("unknown option: {a}"),
+            },
+            ArgError::NoCommand => l
+                .pick("実行するコマンドがありません", "no command to run")
+                .into(),
+            ArgError::SetupWithCommand => l
+                .pick(
+                    "--setup はコマンドと一緒には使えません",
+                    "--setup can't be used with a command",
+                )
+                .into(),
+        }
+    }
+}
+
 /// maho 自身のオプションはコマンドより前だけに置ける。
 /// 最初のオプションでない引数（または `--` の次）から後ろは、すべてコマンドに渡す。
-fn parse_args(mut args: std::collections::VecDeque<String>) -> Result<Options, String> {
+fn parse_args(mut args: std::collections::VecDeque<String>) -> Result<Options, ArgError> {
     let mut opts = Options::default();
     while let Some(arg) = args.front() {
         match arg.as_str() {
             "--explain" => opts.explain = true,
+            "--share" => opts.share = true,
+            "--setup" => opts.setup = true,
             "--svg" => {
                 args.pop_front();
-                let path = args.front().ok_or("--svg にはファイルパスが要ります")?;
+                let path = args.front().ok_or(ArgError::MissingValue("--svg"))?;
                 opts.svg_path = Some(path.clone());
+            }
+            "--locale" => {
+                args.pop_front();
+                let v = args.front().ok_or(ArgError::MissingValue("--locale"))?;
+                opts.locale =
+                    Some(Locale::parse(v).ok_or_else(|| ArgError::UnknownLocale(v.clone()))?);
             }
             "--" => {
                 args.pop_front();
                 break;
             }
-            a if a.starts_with("--") => return Err(format!("知らないオプションです: {a}")),
+            a if a.starts_with("--") => return Err(ArgError::UnknownOption(a.into())),
             _ => break,
         }
         args.pop_front();
     }
     opts.command = args.into();
-    if opts.command.is_empty() {
-        return Err("実行するコマンドがありません".into());
+    match (opts.setup, opts.command.is_empty()) {
+        (true, false) => Err(ArgError::SetupWithCommand),
+        (false, true) => Err(ArgError::NoCommand),
+        _ => Ok(opts),
     }
-    Ok(opts)
 }
 
 fn main() -> ExitCode {
-    let opts = match parse_args(std::env::args().skip(1).collect()) {
+    let env = |k: &str| std::env::var(k).ok();
+    let config_path = locale::config_path(env);
+    let config = config_path.as_deref().and_then(locale::read_config);
+    let parsed = parse_args(std::env::args().skip(1).collect());
+    let (l, source) = match &parsed {
+        Ok(Options {
+            locale: Some(l), ..
+        }) => (*l, Source::Flag),
+        _ => locale::detect(env, config),
+    };
+    let opts = match parsed {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("maho: {e}\n{USAGE}");
+            eprintln!("maho: {}\n{}", e.message(l), usage(l));
             return ExitCode::from(2);
         }
     };
+    if opts.setup {
+        return setup(opts.locale, (l, source), config_path);
+    }
     let args = &opts.command;
 
     // 魔法陣を決めるのは、ユーザーが打ったコマンド文字列そのもの。
@@ -69,24 +179,34 @@ fn main() -> ExitCode {
     let drawn = match terminal::play(&animation(&circle, &spell), FRAME_INTERVAL, protocol) {
         Ok(drawn) => drawn,
         Err(e) => {
-            eprintln!("maho: 魔法陣を描けません: {e}");
+            match l {
+                Locale::Ja => eprintln!("maho: 魔法陣を描けません: {e}"),
+                Locale::En => eprintln!("maho: can't draw the magic circle: {e}"),
+            }
             false
         }
     };
     if opts.explain {
-        explain(&spell, &circle);
+        explain(&spell, &circle, l);
     } else if !drawn && std::io::stderr().is_terminal() {
         // 絵を出せない端末でも、魔法が発動したことだけは伝える
-        eprintln!("✦ 魔法陣展開: {spell}");
+        eprintln!("{}", unfolded(&spell, l));
     }
     if let Some(path) = &opts.svg_path {
         if let Err(e) = std::fs::write(path, render::svg(&circle, &spell)) {
-            eprintln!("maho: 魔法陣を書き出せません: {path}: {e}");
+            match l {
+                Locale::Ja => eprintln!("maho: 魔法陣を書き出せません: {path}: {e}"),
+                Locale::En => eprintln!("maho: can't write the magic circle: {path}: {e}"),
+            }
             return ExitCode::from(1);
         }
         if opts.explain {
             eprintln!("  svg       {path}");
         }
+    }
+
+    if opts.share {
+        return share(&circle, &spell, l);
     }
 
     // 引数 1 つで空白を含むなら `maho "cargo build && ls"` の形とみなしてシェルに渡す。
@@ -103,7 +223,10 @@ fn main() -> ExitCode {
     match cmd.status() {
         Ok(status) => exit_code(status),
         Err(e) => {
-            eprintln!("maho: 詠唱失敗: {}: {e}", args[0]);
+            match l {
+                Locale::Ja => eprintln!("maho: 詠唱失敗: {}: {e}", args[0]),
+                Locale::En => eprintln!("maho: the spell failed: {}: {e}", args[0]),
+            }
             ExitCode::from(if e.kind() == std::io::ErrorKind::NotFound {
                 127
             } else {
@@ -127,14 +250,97 @@ fn animation(c: &MagicCircle, spell: &str) -> Vec<String> {
         .collect()
 }
 
-fn explain(spell: &str, c: &MagicCircle) {
-    eprintln!("✦ 魔法陣展開: {spell}");
+/// 呪文を唱えずに、見せびらかす用の投稿文と画像だけを作る。
+/// 投稿文は stdout に出すので、`maho --share git status | pbcopy` でそのまま貼れる。
+fn share(c: &MagicCircle, spell: &str, l: Locale) -> ExitCode {
+    let path = share::image_name(c);
+    let png = terminal::rasterize(&render::frame(c, spell, 1.0), SHARE_PIXELS);
+    if let Err(e) = png.and_then(|png| std::fs::write(&path, png).map_err(|e| e.to_string())) {
+        match l {
+            Locale::Ja => eprintln!("maho: 魔法陣の画像を書き出せません: {path}: {e}"),
+            Locale::En => eprintln!("maho: can't write the magic circle image: {path}: {e}"),
+        }
+        return ExitCode::from(1);
+    }
+    let post = share::post(c, spell, l);
+    println!("{post}");
+    eprintln!("\n  {:<9} {path}", l.pick("画像", "image"));
+    eprintln!(
+        "  {:<9} {}",
+        l.pick("X に投稿", "post on X"),
+        share::intent_url(&post)
+    );
+    ExitCode::SUCCESS
+}
+
+/// `--setup`: 言語を渡されたら設定ファイルに保存し、無ければ今の設定を見せる。
+fn setup(new: Option<Locale>, (l, source): (Locale, Source), path: Option<PathBuf>) -> ExitCode {
+    let Some(path) = path else {
+        eprintln!(
+            "maho: {}",
+            l.pick(
+                "HOME が無いので設定ファイルの場所が決まりません",
+                "can't find where to put the config file: HOME is not set",
+            )
+        );
+        return ExitCode::from(1);
+    };
+    let Some(new) = new else {
+        let from = match source {
+            Source::Flag => "--locale",
+            Source::Env => "MAHO_LOCALE",
+            Source::Config => l.pick("設定ファイル", "config file"),
+            Source::System => l.pick("LANG などの環境変数", "LANG and friends"),
+            Source::Default => l.pick("既定", "default"),
+        };
+        println!("locale  {}  ({from})", l.code());
+        println!("config  {}", path.display());
+        return ExitCode::SUCCESS;
+    };
+    if let Err(e) = locale::write_config(&path, new) {
+        match new {
+            Locale::Ja => eprintln!("maho: 設定を保存できません: {}: {e}", path.display()),
+            Locale::En => eprintln!("maho: can't save the config: {}: {e}", path.display()),
+        }
+        return ExitCode::from(1);
+    }
+    match new {
+        Locale::Ja => println!("✦ 表示を日本語にしました（{}）", path.display()),
+        Locale::En => println!("✦ Switched to English ({})", path.display()),
+    }
+    // 環境変数は設定ファイルより強いので、保存しても効かないことを知らせる
+    if let Some(env) = std::env::var("MAHO_LOCALE")
+        .ok()
+        .as_deref()
+        .and_then(Locale::parse)
+        && env != new
+    {
+        eprintln!(
+            "  {}",
+            new.pick(
+                "ただし MAHO_LOCALE が設定されているので、そちらが優先されます",
+                "note: MAHO_LOCALE is set and takes precedence",
+            )
+        );
+    }
+    ExitCode::SUCCESS
+}
+
+fn unfolded(spell: &str, l: Locale) -> String {
+    format!(
+        "✦ {}: {spell}",
+        l.pick("魔法陣展開", "Magic circle unfolded")
+    )
+}
+
+fn explain(spell: &str, c: &MagicCircle, l: Locale) {
+    eprintln!("{}", unfolded(spell, l));
     eprintln!("  hash      {}", c.hash_hex());
     eprintln!(
         "  layout {}  shape {}  ornament {}  rings {}  symmetry {}  runes {}  particles {}",
-        c.layout.name(),
-        c.shape.name(),
-        c.ornament.name(),
+        c.layout.name(l),
+        c.shape.name(l),
+        c.ornament.name(l),
         c.rings,
         c.symmetry,
         c.runes,
@@ -145,9 +351,9 @@ fn explain(spell: &str, c: &MagicCircle) {
         c.rotation,
         c.hue,
         if c.clockwise {
-            "右回り"
+            l.pick("右回り", "clockwise")
         } else {
-            "左回り"
+            l.pick("左回り", "counterclockwise")
         }
     );
 }
@@ -171,7 +377,7 @@ fn exit_code(status: std::process::ExitStatus) -> ExitCode {
 mod tests {
     use super::*;
 
-    fn parse(args: &[&str]) -> Result<Options, String> {
+    fn parse(args: &[&str]) -> Result<Options, ArgError> {
         parse_args(args.iter().map(|s| s.to_string()).collect())
     }
 
@@ -202,9 +408,35 @@ mod tests {
     }
 
     #[test]
+    fn share_flag() {
+        let o = parse(&["--share", "git", "status"]).unwrap();
+        assert!(o.share);
+        assert_eq!(o.command, cmd(&["git", "status"]));
+    }
+
+    #[test]
     fn double_dash_ends_options() {
         let o = parse(&["--", "--explain"]).unwrap();
         assert_eq!(o.command, cmd(&["--explain"]));
+    }
+
+    #[test]
+    fn locale_and_setup() {
+        let o = parse(&["--locale", "en", "ls"]).unwrap();
+        assert_eq!(o.locale, Some(Locale::En));
+        let o = parse(&["--setup", "--locale", "ja"]).unwrap();
+        assert!(o.setup);
+        assert_eq!(o.locale, Some(Locale::Ja));
+        assert!(parse(&["--setup"]).unwrap().command.is_empty());
+        assert_eq!(parse(&["--setup", "ls"]), Err(ArgError::SetupWithCommand));
+        assert_eq!(
+            parse(&["--locale", "fr", "ls"]),
+            Err(ArgError::UnknownLocale("fr".into()))
+        );
+        assert_eq!(
+            parse(&["--locale"]),
+            Err(ArgError::MissingValue("--locale"))
+        );
     }
 
     #[test]

@@ -106,18 +106,19 @@ fn rasterize_in_background(frames: &[String]) -> Vec<Receiver<Result<Vec<u8>, St
                     return;
                 };
                 // 受け手が先に抜けていたら送れないが、それで困ることはない
-                let _ = tx.send(rasterize(&svg));
+                let _ = tx.send(rasterize(&svg, PIXELS));
             }
         });
     }
     rxs
 }
 
-fn rasterize(svg: &str) -> Result<Vec<u8>, String> {
+/// SVG を一辺 `pixels` の PNG にする。
+pub fn rasterize(svg: &str, pixels: u32) -> Result<Vec<u8>, String> {
     let tree = resvg::usvg::Tree::from_str(svg, &resvg::usvg::Options::default())
         .map_err(|e| e.to_string())?;
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(PIXELS, PIXELS).ok_or("pixmap の確保に失敗")?;
-    let scale = PIXELS as f32 / tree.size().width();
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixels, pixels).ok_or("pixmap の確保に失敗")?;
+    let scale = pixels as f32 / tree.size().width();
     resvg::render(
         &tree,
         resvg::tiny_skia::Transform::from_scale(scale, scale),
@@ -221,7 +222,7 @@ mod tests {
             &crate::circle::MagicCircle::from_command("git status"),
             "git status",
         );
-        let png = rasterize(&svg).unwrap();
+        let png = rasterize(&svg, PIXELS).unwrap();
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
     }
 }

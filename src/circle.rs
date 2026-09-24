@@ -7,6 +7,8 @@ use rand_chacha::ChaCha8Rng;
 use rand_core::{Rng, SeedableRng};
 use sha2::{Digest, Sha256};
 
+use crate::locale::Locale;
+
 /// 魔法陣の中心に据える図形。ハッシュの先頭バイトがそのまま決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
@@ -45,20 +47,20 @@ impl Shape {
         Self::ALL[b as usize * Self::ALL.len() / 256]
     }
 
-    pub fn name(self) -> &'static str {
+    pub fn name(self, l: Locale) -> &'static str {
         match self {
-            Shape::Circle => "円",
-            Shape::Triangle => "三角",
-            Shape::Hexagram => "六芒星",
-            Shape::MultiCircle => "多重円",
-            Shape::Pentagram => "五芒星",
-            Shape::Octagram => "八芒星",
-            Shape::NestedPolygons => "入れ子多角形",
-            Shape::Spiral => "螺旋",
-            Shape::Petals => "花弁",
-            Shape::Metatron => "メタトロン",
-            Shape::Wheel => "車輪",
-            Shape::Satellites => "衛星",
+            Shape::Circle => l.pick("円", "circle"),
+            Shape::Triangle => l.pick("三角", "triangle"),
+            Shape::Hexagram => l.pick("六芒星", "hexagram"),
+            Shape::MultiCircle => l.pick("多重円", "concentric circles"),
+            Shape::Pentagram => l.pick("五芒星", "pentagram"),
+            Shape::Octagram => l.pick("八芒星", "octagram"),
+            Shape::NestedPolygons => l.pick("入れ子多角形", "nested polygons"),
+            Shape::Spiral => l.pick("螺旋", "spiral"),
+            Shape::Petals => l.pick("花弁", "petals"),
+            Shape::Metatron => l.pick("メタトロン", "Metatron's cube"),
+            Shape::Wheel => l.pick("車輪", "wheel"),
+            Shape::Satellites => l.pick("衛星", "satellites"),
         }
     }
 }
@@ -90,14 +92,14 @@ impl Ornament {
         Ornament::Beads,
     ];
 
-    pub fn name(self) -> &'static str {
+    pub fn name(self, l: Locale) -> &'static str {
         match self {
-            Ornament::Star => "星形",
-            Ornament::Chain => "円鎖",
-            Ornament::Rays => "光条",
-            Ornament::Crown => "冠",
-            Ornament::Web => "網",
-            Ornament::Beads => "数珠",
+            Ornament::Star => l.pick("星形", "star"),
+            Ornament::Chain => l.pick("円鎖", "chain"),
+            Ornament::Rays => l.pick("光条", "rays"),
+            Ornament::Crown => l.pick("冠", "crown"),
+            Ornament::Web => l.pick("網", "web"),
+            Ornament::Beads => l.pick("数珠", "beads"),
         }
     }
 }
@@ -114,11 +116,11 @@ pub enum Layout {
 }
 
 impl Layout {
-    pub fn name(self) -> &'static str {
+    pub fn name(self, l: Locale) -> &'static str {
         match self {
-            Layout::Classic => "標準",
-            Layout::Grand => "大星",
-            Layout::Breach => "突破",
+            Layout::Classic => l.pick("標準", "classic"),
+            Layout::Grand => l.pick("大星", "grand star"),
+            Layout::Breach => l.pick("突破", "breach"),
         }
     }
 }
