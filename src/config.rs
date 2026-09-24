@@ -3,6 +3,7 @@
 //! ```toml
 //! locale = "ja"
 //! chant_skip = ["cd", "ls"]
+//! shatter = false
 //! ```
 //!
 //! 書き換えるのは `maho --setup --locale` の locale だけで、ほかの設定やコメントは残す。
@@ -18,6 +19,8 @@ pub struct Config {
     pub locale: Option<Locale>,
     /// 詠唱モードで魔法陣を出さないコマンド。無ければ既定を使う
     pub chant_skip: Option<Vec<String>>,
+    /// コマンドが失敗したとき魔法陣を砕くか。無ければ砕く
+    pub shatter: Option<bool>,
 }
 
 pub fn path(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
@@ -43,7 +46,12 @@ impl Config {
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
         });
-        Ok(Config { locale, chant_skip })
+        let shatter = doc.get("shatter").and_then(|v| v.as_bool());
+        Ok(Config {
+            locale,
+            chant_skip,
+            shatter,
+        })
     }
 
     /// ファイルが無ければ既定の設定。
@@ -108,6 +116,11 @@ mod tests {
         let c = Config::parse("locale = \"fr\"\nchant_skip = \"ls\"\n").unwrap();
         assert_eq!(c, Config::default());
         assert_eq!(Config::parse("").unwrap(), Config::default());
+        assert_eq!(
+            Config::parse("shatter = false").unwrap().shatter,
+            Some(false)
+        );
+        assert_eq!(Config::parse("shatter = \"no\"").unwrap().shatter, None);
         // 空のリストは「すべてに出す」なので、無いのとは区別する
         assert_eq!(
             Config::parse("chant_skip = []").unwrap().chant_skip,

@@ -81,6 +81,8 @@ struct Options {
     no_run: bool,
     /// 詠唱モードのフックから呼ばれた。`--no-run` に加えて、除外リストのコマンドを飛ばす
     chant: bool,
+    /// 詠唱モードのフックから、失敗したコマンドの終了コードを添えて呼ばれた。砕ける魔法陣だけを出す
+    shatter: Option<i32>,
     setup: bool,
     grimoire: bool,
     help: bool,
@@ -155,6 +157,13 @@ fn parse_args(
             // 詠唱モードのスクリプトだけが使う。usage には出さない
             "--chant" => {
                 opts.chant = true;
+                opts.no_run = true;
+            }
+            // これも詠唱モードのスクリプトだけが使う
+            "--shatter" => {
+                args.pop_front();
+                let code = args.front().and_then(|v| v.parse().ok());
+                opts.shatter = Some(code.ok_or(ArgError::MissingValue("--shatter"))?);
                 opts.no_run = true;
             }
             "--setup" => opts.setup = true,
@@ -253,12 +262,20 @@ fn main() -> ExitCode {
 
     // 魔法陣を決めるのは、ユーザーが打ったコマンド文字列そのもの。
     let spell = args.join(" ");
-    if opts.chant && shell::skipped(&spell, &shell::skip_list(config.chant_skip.as_deref())) {
+    if (opts.chant || opts.shatter.is_some())
+        && shell::skipped(&spell, &shell::skip_list(config.chant_skip.as_deref()))
+    {
         return ExitCode::SUCCESS;
     }
     let mut circle = MagicCircle::from_command(&spell);
     if forbidden::is_forbidden(&spell) {
         circle.forbid();
+    }
+    if let Some(code) = opts.shatter {
+        if shatters(code, &config) {
+            break_circle(&circle, &spell, code, l);
+        }
+        return ExitCode::SUCCESS;
     }
     // コマンドの stdout を汚さないよう、演出はすべて stderr に出す。
     // 描けなくてもコマンドは実行する。魔法陣は飾りでしかない。
@@ -322,7 +339,14 @@ fn main() -> ExitCode {
     };
 
     match cmd.status() {
-        Ok(status) => exit_code(status),
+        Ok(status) => {
+            if let Some(code) = status.code()
+                && shatters(code, &config)
+            {
+                break_circle(&circle, &spell, code, l);
+            }
+            exit_code(status)
+        }
         Err(e) => {
             match l {
                 Locale::Ja => eprintln!("maho: 詠唱失敗: {}: {e}", args[0]),
@@ -340,6 +364,40 @@ fn main() -> ExitCode {
 /// 展開アニメーションのコマ数と間隔。合わせて 0.7 秒ほどで、待たされる感じを出さない。
 const FRAMES: u32 = 16;
 const FRAME_INTERVAL: Duration = Duration::from_millis(45);
+
+/// 砕ける演出のコマ数。展開と同じ間隔で 0.6 秒ほど
+const SHATTER_FRAMES: u32 = 14;
+
+/// 失敗したら魔法陣が砕けるか。砕けるのは呪文そのものが失敗したとき（終了コード 1〜127）だけで、
+/// Ctrl-C などのシグナルで止めたときは砕けない。設定ファイルの `shatter = false` で止められる。
+fn shatters(code: i32, config: &config::Config) -> bool {
+    (1..128).contains(&code) && config.shatter != Some(false)
+}
+
+/// 砕けた魔法陣を小さく出す。割れた姿のまま残る。
+fn break_circle(c: &MagicCircle, spell: &str, code: i32, l: Locale) {
+    // 砕く前の魔法陣を一度だけ絵にして、それを破片に切り分ける
+    let frames: Vec<String> = match terminal::rasterize(&render::frame(c, spell, 1.0), 512) {
+        Ok(picture) if std::env::var("MAHO_ANIMATION").as_deref() == Ok("off") => {
+            vec![render::shatter(c, &picture, 1.0)]
+        }
+        Ok(picture) => (1..=SHATTER_FRAMES)
+            .map(|i| render::shatter(c, &picture, i as f32 / SHATTER_FRAMES as f32))
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    let target = terminal::detect(|k| std::env::var(k).ok(), terminal::ask_tmux);
+    // 描けなくても、砕けたことは文字で伝える
+    if !frames.is_empty() {
+        let _ = terminal::play(&frames, FRAME_INTERVAL, target, Tier::Small.rows());
+    }
+    if std::io::stderr().is_terminal() {
+        match l {
+            Locale::Ja => eprintln!("✦ 魔法陣が砕けた（終了コード {code}）"),
+            Locale::En => eprintln!("✦ The circle shattered (exit {code})"),
+        }
+    }
+}
 
 /// `MAHO_ANIMATION=off` なら完成図 1 枚だけにする。
 fn animation(c: &MagicCircle, spell: &str) -> Vec<String> {
@@ -457,6 +515,11 @@ fn setup(
         };
         println!("locale      {}  ({from})", l.code());
         println!("chant_skip  {skip}  ({skip_from})");
+        let shatter = match config.shatter {
+            Some(on) => format!("{on}  ({})", l.pick("設定ファイル", "config file")),
+            None => format!("true  ({})", l.pick("既定", "default")),
+        };
+        println!("shatter     {shatter}");
         println!("config      {}", path.display());
         return ExitCode::SUCCESS;
     };
@@ -590,6 +653,30 @@ mod tests {
         let o = parse(&["--share", "git", "status"]).unwrap();
         assert!(o.share);
         assert_eq!(o.command, cmd(&["git", "status"]));
+    }
+
+    #[test]
+    fn shatter_flag_takes_the_exit_code() {
+        let o = parse(&["--shatter", "2", "--", "make"]).unwrap();
+        assert_eq!(o.shatter, Some(2));
+        assert!(o.no_run);
+        assert_eq!(
+            parse(&["--shatter", "x", "--", "make"]),
+            Err(ArgError::MissingValue("--shatter"))
+        );
+    }
+
+    #[test]
+    fn only_real_failures_shatter() {
+        let on = config::Config::default();
+        assert!(shatters(1, &on) && shatters(127, &on));
+        // 成功と、Ctrl-C（130）などのシグナルでは砕けない
+        assert!(!shatters(0, &on) && !shatters(130, &on));
+        let off = config::Config {
+            shatter: Some(false),
+            ..Default::default()
+        };
+        assert!(!shatters(1, &off));
     }
 
     #[test]

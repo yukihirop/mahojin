@@ -87,10 +87,14 @@ fn ease(x: f32) -> f32 {
 }
 
 fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
-    let mut rng = ChaCha8Rng::from_seed(c.hash);
-    rng.set_stream(1);
-    let st = Stages::at(t);
+    let mut s = open_svg(Stages::at(t).flash);
+    scene(&mut s, c, spell, t);
+    s.push_str("</svg>\n");
+    s
+}
 
+/// SVG の頭と背景。`flash` が強いほど光のにじみを広げる。
+fn open_svg(flash: f32) -> String {
     let mut s = String::new();
     let h = SIZE / 2.0;
     writeln!(
@@ -102,7 +106,7 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     writeln!(
         s,
         r#"<defs><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="{:.1}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>{DOUBLE}</defs>"#,
-        5.0 + 14.0 * st.flash
+        5.0 + 14.0 * flash
     )
     .unwrap();
     writeln!(
@@ -111,6 +115,14 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
         -h, -h
     )
     .unwrap();
+    s
+}
+
+/// 粒子と魔法陣（背景を除く）。
+fn scene(s: &mut String, c: &MagicCircle, spell: &str, t: Option<f32>) {
+    let mut rng = ChaCha8Rng::from_seed(c.hash);
+    rng.set_stream(1);
+    let st = Stages::at(t);
 
     // 小魔法は粒子も控えめにする
     let particles_count = if c.tier == Tier::Small {
@@ -124,23 +136,23 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
     } else {
         (c.hue + 180.0) % 360.0
     };
-    particles(&mut s, &mut rng, particles_count, particle_hue);
+    particles(s, &mut rng, particles_count, particle_hue);
     let reach = match c.tier {
         // 禁呪は、引いた格にかかわらず超極大魔法になる
         _ if c.forbidden => {
-            beyond(&mut s, c, spell, t, &mut rng);
+            beyond(s, c, spell, t, &mut rng);
             BAND_OUTER
         }
         Tier::Ultimate => {
-            ultimate(&mut s, c, spell, t, &mut rng);
+            ultimate(s, c, spell, t, &mut rng);
             BAND_OUTER
         }
         Tier::Large => {
-            large(&mut s, c, spell, t, &mut rng);
+            large(s, c, spell, t, &mut rng);
             BAND_OUTER
         }
         Tier::Small | Tier::Medium => {
-            body(&mut s, c, spell, t, &mut rng);
+            body(s, c, spell, t, &mut rng);
             BAND_OUTER * scale_of(c)
         }
     };
@@ -155,7 +167,94 @@ fn draw(c: &MagicCircle, spell: &str, t: Option<f32>) -> String {
         )
         .unwrap();
     }
-    s.push_str("</svg>\n");
+}
+
+/// 呪文が失敗したときに砕ける魔法陣の 1 コマ。`t` は 0.0（割れる前）〜 1.0（砕け終わり）。
+/// 前半でひびが走り、後半で破片が外へずれて落ちる。最後のコマは割れた姿のまま残す。
+/// `picture` は完成した魔法陣を描いた PNG。破片ごとに描き直すと重いので、1 枚の絵を切り分けて使う。
+pub fn shatter(c: &MagicCircle, picture: &[u8], t: f32) -> String {
+    use base64::Engine;
+
+    let t = t.clamp(0.0, 1.0);
+    let mut rng = ChaCha8Rng::from_seed(c.hash);
+    rng.set_stream(7);
+
+    // 割れの中心は真ん中から少しずれる。そこから放射状にひびを入れる
+    let center = polar(unit(&mut rng) * 60.0, unit(&mut rng) * TAU);
+    let n = 6 + (rng.next_u32() % 4) as usize;
+    let mut cuts: Vec<f32> = (0..n)
+        .map(|i| (i as f32 + 0.2 + unit(&mut rng) * 0.6) / n as f32 * TAU)
+        .collect();
+    cuts.sort_by(f32::total_cmp);
+    // i 番目の破片は cuts[i] から次の切れ目まで
+    let span = |i: usize| {
+        (
+            cuts[i],
+            cuts[(i + 1) % n] + if i + 1 == n { TAU } else { 0.0 },
+        )
+    };
+
+    let crack = (t / 0.35).min(1.0);
+    let fall = ease(((t - 0.35) / 0.65).clamp(0.0, 1.0));
+
+    let mut s = open_svg(0.0);
+    let h = SIZE / 2.0;
+    let image = format!(
+        r#"<image x="{}" y="{}" width="{SIZE}" height="{SIZE}" href="data:image/png;base64,{}"/>"#,
+        -h,
+        -h,
+        base64::engine::general_purpose::STANDARD.encode(picture)
+    );
+    let _ = writeln!(s, "<defs>");
+    for i in 0..n {
+        let (a0, a1) = span(i);
+        // 破片は、割れの中心と、画面の外まで届く弧で囲む
+        let steps = ((a1 - a0) / 0.3).ceil().max(1.0) as usize;
+        let points: Vec<String> = std::iter::once(center)
+            .chain((0..=steps).map(|k| polar(760.0, a0 + (a1 - a0) * k as f32 / steps as f32)))
+            .map(|(x, y)| format!("{x:.1},{y:.1}"))
+            .collect();
+        let _ = writeln!(
+            s,
+            r#"<clipPath id="shard{i}"><polygon points="{}"/></clipPath>"#,
+            points.join(" ")
+        );
+    }
+    let _ = writeln!(s, "</defs>");
+
+    for i in 0..n {
+        let (a0, a1) = span(i);
+        let (dx, dy) = polar(fall * (35.0 + unit(&mut rng) * 45.0), (a0 + a1) / 2.0);
+        let drop = fall * fall * (30.0 + unit(&mut rng) * 50.0);
+        let spin = fall * (unit(&mut rng) - 0.5) * 16.0;
+        let _ = writeln!(
+            s,
+            r#"<g transform="translate({dx:.1} {:.1}) rotate({spin:.2} {:.1} {:.1})" opacity="{:.3}"><g clip-path="url(#shard{i})">{image}</g></g>"#,
+            dy + drop,
+            center.0,
+            center.1,
+            1.0 - 0.45 * fall
+        );
+    }
+
+    // ひび。割れの中心から外周へ、ぎざぎざに伸びる。破片が離れるにつれて消える
+    let _ = writeln!(
+        s,
+        r#"<g fill="none" stroke="hsl(30,100%,85%)" stroke-width="5" stroke-linejoin="round" filter="url(#glow)" opacity="{:.3}">"#,
+        1.0 - fall
+    );
+    for &a in &cuts {
+        let mut d = format!("M{:.1} {:.1}", center.0, center.1);
+        for k in 1..=6 {
+            let wobble = (unit(&mut rng) - 0.5) * 0.12;
+            let (x, y) = polar(BAND_OUTER * crack * k as f32 / 6.0, a + wobble);
+            let _ = write!(d, " L{:.1} {:.1}", center.0 + x, center.1 + y);
+        }
+        if crack > 0.0 && fall < 1.0 {
+            let _ = writeln!(s, r#"<path d="{d}"/>"#);
+        }
+    }
+    s.push_str("</g>\n</svg>\n");
     s
 }
 
@@ -1170,5 +1269,25 @@ mod tests {
         // 呪文の帯にはルーンが無い
         let (c, spell) = with_band(Band::Script);
         assert_eq!(svg(&c, &spell).matches(RUNE).count(), 0);
+    }
+
+    #[test]
+    fn shattered_circles_split_into_shards() {
+        let c = MagicCircle::from_command("make build");
+        let shards = |svg: &str| svg.matches("<clipPath id=\"shard").count();
+        let cracks = |svg: &str| svg.matches("<path d=\"M").count();
+        let start = shatter(&c, b"png", 0.0);
+        let middle = shatter(&c, b"png", 0.5);
+        let end = shatter(&c, b"png", 1.0);
+        let n = shards(&start);
+        assert!((6..=9).contains(&n), "{n}");
+        // 破片ごとに同じ絵を切り抜く
+        assert_eq!(end.matches("data:image/png;base64,cG5n").count(), n);
+        // 割れる前はひびが無く、途中は切れ目ごとに 1 本、砕け終わると消える
+        assert_eq!(cracks(&start), 0);
+        assert_eq!(cracks(&middle), n);
+        assert_eq!(cracks(&end), 0);
+        // 同じ呪文は同じように砕ける
+        assert_eq!(middle, shatter(&c, b"png", 0.5));
     }
 }

@@ -89,11 +89,21 @@ _maho_preexec() {
   # maho を自分で唱えた行には重ねない
   local -a words=(${(z)1})
   [[ $words[1] == maho || $words[1] == command && $words[2] == maho ]] && return 0
+  typeset -g _maho_last=$1
   command maho --chant -- "$1"
+}
+
+# 唱えた呪文が失敗したら、魔法陣が砕ける
+_maho_precmd() {
+  local st=$? line=$_maho_last
+  _maho_last=
+  [[ -n $line && $st -ne 0 && -n $_MAHO_CHANTING ]] && command maho --shatter $st -- "$line"
+  return $st
 }
 
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _maho_preexec
+add-zsh-hook precmd _maho_precmd
 "#;
 
 /// bash には preexec が無い。bash-preexec があればそれに乗り、無ければ DEBUG トラップで作る。
@@ -117,16 +127,29 @@ _maho_cast() {
   local -a words
   IFS=$' \t\n' read -r -a words <<< "$1"
   [[ ${words[0]} == maho || ( ${words[0]} == command && ${words[1]} == maho ) ]] && return 0
+  _maho_last=$1
   command maho --chant -- "$1"
+}
+
+# 唱えた呪文が失敗したら、魔法陣が砕ける。$1 は呪文の終了コード
+_maho_after() {
+  local line=$_maho_last
+  _maho_last=
+  [[ -n $line && $1 -ne 0 && -n $_MAHO_CHANTING ]] && command maho --shatter "$1" -- "$line"
+  return 0
 }
 
 if [[ -n ${bash_preexec_imported:-} || -n ${__bp_imported:-} ]]; then
   preexec_functions+=(_maho_cast)
+  _maho_precmd() { _maho_after $?; }
+  precmd_functions+=(_maho_precmd)
 elif [[ -n $(trap -p DEBUG) ]]; then
   printf '%s\n' '{taken}' >&2
 else
   _maho_at_prompt=1
-  _maho_prompt() { _maho_at_prompt=1; }
+  # 呪文の終了コードは、ほかのプロンプトのフックに上書きされる前に取っておく。$? はそのまま返す
+  _maho_status() { _maho_st=$?; return $_maho_st; }
+  _maho_prompt() { _maho_after "$_maho_st"; _maho_at_prompt=1; return $_maho_st; }
 
   _maho_debug() {
     [[ -n $_maho_at_prompt && -z ${COMP_LINE:-} ]] || return 0
@@ -148,7 +171,7 @@ else
     _maho_cast "$line"
   }
 
-  PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }_maho_prompt"
+  PROMPT_COMMAND="_maho_status; ${PROMPT_COMMAND:+$PROMPT_COMMAND; }_maho_prompt"
   trap '_maho_debug' DEBUG
 fi
 "#;
@@ -175,7 +198,19 @@ function _maho_preexec --on-event fish_preexec
     if test "$words[1]" = command; and test "$words[2]" = maho
         return 0
     end
+    set -g _maho_last $argv[1]
     command maho --chant -- $argv[1]
+end
+
+# 唱えた呪文が失敗したら、魔法陣が砕ける
+function _maho_postexec --on-event fish_postexec
+    set -l st $status
+    set -q _maho_last; or return 0
+    set -l line $_maho_last
+    set -e _maho_last
+    if test $st -ne 0; and set -q _maho_chanting
+        command maho --shatter $st -- $line
+    end
 end
 "#;
 
@@ -202,6 +237,12 @@ mod tests {
                 .contains("add-zsh-hook preexec")
         );
         assert!(init("fish", Locale::Ja).unwrap().contains("fish_preexec"));
+        for shell in SHELLS {
+            assert!(
+                init(shell, Locale::Ja).unwrap().contains("--shatter"),
+                "{shell}"
+            );
+        }
     }
 
     #[test]

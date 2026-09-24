@@ -329,7 +329,11 @@ pub fn show(g: &Grimoire, l: Locale) -> String {
     let (spells, casts) = g.casts();
     s.push_str(&match l {
         Locale::Ja => format!("  唱えた呪文 {spells} 種 / 延べ {casts} 回\n\n"),
-        Locale::En => format!("  {spells} spells cast, {casts} times in all\n\n"),
+        Locale::En => format!(
+            "  {} cast, {} in all\n\n",
+            plural(spells as u64, "spell"),
+            plural(casts, "time")
+        ),
     });
     for (ja, en, items) in &pages {
         let n = items.iter().filter(|i| found.contains(i)).count();
@@ -373,9 +377,11 @@ pub fn show(g: &Grimoire, l: Locale) -> String {
                 format!("{spells} 種")
             ),
             Locale::En => format!(
-                "\n  {} {:>6}  spells, cast {casts} times\n",
+                "\n  {} {:>6}  {}, cast {}\n",
                 pad("forbidden", 10),
-                spells
+                spells,
+                if spells == 1 { "spell" } else { "spells" },
+                plural(casts, "time")
             ),
         });
         let names: Vec<&str> = Doom::ALL
@@ -420,6 +426,15 @@ fn bar(have: usize, total: usize, width: usize) -> String {
 }
 
 /// 全角を 2 桁と数えて右を空白で埋める。
+/// 英語の「1 spell」「2 spells」
+fn plural(n: u64, word: &str) -> String {
+    if n == 1 {
+        format!("{n} {word}")
+    } else {
+        format!("{n} {word}s")
+    }
+}
+
 fn pad(s: &str, width: usize) -> String {
     let w: usize = s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum();
     format!("{s}{}", " ".repeat(width.saturating_sub(w)))

@@ -114,6 +114,19 @@ bash has no pre-command hook like zsh and fish do, so maho builds one from the D
 [bash-preexec](https://github.com/rcaloras/bash-preexec) is loaded first, it hooks into that instead.
 If something else already uses the DEBUG trap, maho stays out and tells you so.
 
+### Failed spells
+
+When a command fails (exit code 1 to 127), its circle shatters: cracks run through it and the shards
+drift apart and fall, in about a second. This happens both with `maho <command>` and in chanting mode.
+Stopping a command with Ctrl-C or another signal doesn't shatter anything, and the exit code is still
+the command's own.
+
+To turn it off, put this in the config file:
+
+```toml
+shatter = false
+```
+
 ### Showing off your circle
 
 ```console
@@ -236,7 +249,7 @@ sits on the outer screen and draws there; the image may linger when you switch w
 | Environment variable | Meaning |
 | --- | --- |
 | `MAHO_GRAPHICS=kitty\|iterm\|none` | Skip detection and force a method |
-| `MAHO_ANIMATION=off` | Skip the unfolding animation and show only the finished circle |
+| `MAHO_ANIMATION=off` | Skip the animations and show one still: the finished circle, or the shattered one |
 | `MAHO_LOCALE=ja\|en` | Use this language, overriding the config file |
 | `MAHO_GRIMOIRE=off` | Don't write casts into the grimoire |
 
