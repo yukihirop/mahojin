@@ -43,6 +43,7 @@ maho "cargo build && ls"      # a single argument containing spaces goes to the 
 | --- | --- |
 | `--explain` | Show the circle's hash and the parameters drawn from it |
 | `--svg <file>` | Write the circle out as SVG |
+| `--no-run` | Unfold the circle but don't run the command |
 | `--share` | Don't run the command; make a post text and image for X and the like |
 | `--locale <ja\|en>` | Use this language for this run |
 | `--setup` | Show settings; with `--locale`, save that language |
@@ -75,6 +76,28 @@ alias deploy='maho make deploy'     # shipping to production
 Arguments are part of the spell, so `release v1.2.0` and `release v1.3.0` get different circles and
 tiers. A release that draws an ultimate spell is surely blessed. You can still `alias git='maho git'` if
 you want a circle every time, but the seconds do add up.
+
+### Chanting mode (zsh)
+
+Sometimes you want a circle on every command, just for the length of a release. Add one line to your
+`.zshrc`, and between `maho on` and `maho off` every command you type unfolds a circle.
+
+```sh
+# ~/.zshrc
+eval "$(maho init zsh)"
+```
+
+```console
+$ maho on
+✦ Chanting: every command you type unfolds a circle (maho off to stop)
+$ git tag v1.2.0 && git push --tags     # the whole line is one spell
+$ maho off
+```
+
+It doesn't put `maho` in front of your commands. It draws the circle just before each command runs and
+leaves the running to the shell, so `cd`, aliases and pipes all work as usual. It only lasts for that
+shell. The shells coding agents type into don't load your interactive `.zshrc`, so the circles only
+appear when a human types.
 
 ### Showing off your circle
 

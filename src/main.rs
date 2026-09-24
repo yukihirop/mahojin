@@ -4,6 +4,7 @@ mod locale;
 mod render;
 mod script;
 mod share;
+mod shell;
 mod terminal;
 
 use std::io::IsTerminal;
@@ -25,6 +26,11 @@ fn usage(l: Locale) -> String {
             "--svg <file>",
             "魔法陣を SVG に書き出す",
             "Write the circle out as SVG",
+        ),
+        (
+            "--no-run",
+            "魔法陣だけ出して、コマンドは実行しない",
+            "Unfold the circle but don't run the command",
         ),
         (
             "--share",
@@ -52,6 +58,8 @@ fn usage(l: Locale) -> String {
        maho [options] \"<shell command>\"
        maho --setup [--locale <ja|en>]
        maho --grimoire
+       maho init zsh
+       maho on | off
 ",
     );
     for (flag, ja, en) in lines {
@@ -67,6 +75,7 @@ const SHARE_PIXELS: u32 = 1200;
 struct Options {
     explain: bool,
     share: bool,
+    no_run: bool,
     setup: bool,
     grimoire: bool,
     locale: Option<Locale>,
@@ -133,6 +142,7 @@ fn parse_args(mut args: std::collections::VecDeque<String>) -> Result<Options, A
         match arg.as_str() {
             "--explain" => opts.explain = true,
             "--share" => opts.share = true,
+            "--no-run" => opts.no_run = true,
             "--setup" => opts.setup = true,
             "--grimoire" => opts.grimoire = true,
             "--svg" => {
@@ -190,6 +200,21 @@ fn main() -> ExitCode {
         return open_grimoire(grimoire_path, l);
     }
     let args = &opts.command;
+    match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+        ["init", shell] => return init(shell, l),
+        // シェルの関数が読み込まれていれば、ここへは来ない
+        ["on"] | ["off"] => {
+            eprintln!(
+                "maho: {}",
+                l.pick(
+                    "maho on / off には、.zshrc に eval \"$(maho init zsh)\" を書いてシェルを開き直してください",
+                    "maho on / off needs eval \"$(maho init zsh)\" in your .zshrc; then open a new shell",
+                )
+            );
+            return ExitCode::from(2);
+        }
+        _ => {}
+    }
 
     // 魔法陣を決めるのは、ユーザーが打ったコマンド文字列そのもの。
     let spell = args.join(" ");
@@ -237,6 +262,9 @@ fn main() -> ExitCode {
 
     if opts.share {
         return share(&circle, &spell, l);
+    }
+    if opts.no_run {
+        return ExitCode::SUCCESS;
     }
 
     // 引数 1 つで空白を含むなら `maho "cargo build && ls"` の形とみなしてシェルに渡す。
@@ -339,6 +367,18 @@ fn open_grimoire(path: Option<PathBuf>, l: Locale) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+fn init(shell: &str, l: Locale) -> ExitCode {
+    if shell != "zsh" {
+        match l {
+            Locale::Ja => eprintln!("maho: {shell} にはまだ対応していません（今は zsh だけ）"),
+            Locale::En => eprintln!("maho: {shell} isn't supported yet (only zsh for now)"),
+        }
+        return ExitCode::from(2);
+    }
+    print!("{}", shell::zsh(l));
+    ExitCode::SUCCESS
 }
 
 /// `--setup`: 言語を渡されたら設定ファイルに保存し、無ければ今の設定を見せる。
@@ -489,6 +529,13 @@ mod tests {
         let o = parse(&["--share", "git", "status"]).unwrap();
         assert!(o.share);
         assert_eq!(o.command, cmd(&["git", "status"]));
+    }
+
+    #[test]
+    fn no_run_flag() {
+        let o = parse(&["--no-run", "--", "ls | grep x"]).unwrap();
+        assert!(o.no_run);
+        assert_eq!(o.command, cmd(&["ls | grep x"]));
     }
 
     #[test]
