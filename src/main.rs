@@ -709,10 +709,10 @@ fn setup(
 fn announced(c: &MagicCircle, l: Locale) -> Option<String> {
     let rare =
         c.forbidden || c.holy || c.summoned || matches!(c.tier, Tier::Large | Tier::Ultimate);
-    let names: Vec<&str> = rare
-        .then(|| c.title(l))
+    let names: Vec<String> = rare
+        .then(|| c.starred_title(l))
         .into_iter()
-        .chain(c.omen.map(|o| o.name(l)))
+        .chain(c.omen.map(|o| o.name(l).into()))
         .collect();
     (!names.is_empty()).then(|| names.join(" / "))
 }
@@ -742,7 +742,7 @@ fn unfolded(spell: &str, c: &MagicCircle, l: Locale) -> String {
 fn explain(spell: &str, c: &MagicCircle, l: Locale) {
     eprintln!("{}", unfolded(spell, c, l));
     eprintln!("  hash      {}", c.hash_hex());
-    eprintln!("  tier      {}", c.title(l));
+    eprintln!("  tier      {}", c.starred_title(l));
     if let Some(o) = c.omen {
         eprintln!("  omen      {}", o.name(l));
     }
