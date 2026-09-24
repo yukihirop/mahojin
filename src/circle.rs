@@ -272,10 +272,10 @@ impl MagicCircle {
         self.clockwise = false;
     }
 
-    /// 格の名前。禁呪は引いた格にかかわらず超極大魔法になる。
+    /// 格の名前。禁呪は引いた格にかかわらず超極大魔法になり、禁呪であることも名乗る。
     pub fn title(&self, l: Locale) -> &'static str {
         if self.forbidden {
-            l.pick("超極大魔法", "super ultimate spell")
+            l.pick("超極大魔法（禁呪）", "super ultimate spell (forbidden)")
         } else {
             self.tier.name(l)
         }

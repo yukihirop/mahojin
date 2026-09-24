@@ -491,7 +491,10 @@ fn setup(
 
 fn unfolded(spell: &str, c: &MagicCircle, l: Locale) -> String {
     let what = if c.forbidden {
-        l.pick("超極大魔法展開", "Super ultimate circle unfolded")
+        l.pick(
+            "禁呪展開（超極大魔法）",
+            "Forbidden circle unfolded (super ultimate)",
+        )
     } else {
         l.pick("魔法陣展開", "Magic circle unfolded")
     };
