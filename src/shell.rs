@@ -1,4 +1,4 @@
-//! `mahojin init <shell>`: `mahojin on` で、打ったコマンドすべてに魔法陣を出す詠唱モード。
+//! `mahojin --init <shell>`: `mahojin --on` で、打ったコマンドすべてに魔法陣を出す詠唱モード。
 //!
 //! 子プロセスの mahojin は親のシェルを変えられないので、シェル側に関数とフックを読み込んでもらう。
 //! コマンドの前に `mahojin` を足すのではなく、実行直前（preexec）に魔法陣だけ描いて、
@@ -50,8 +50,8 @@ pub fn init(shell: &str, l: Locale) -> Option<String> {
         _ => return None,
     };
     let on = l.pick(
-        "✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（mahojin off で戻る）",
-        "✦ Chanting: the commands you type unfold circles (mahojin off to stop)",
+        "✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（mahojin --off で戻る）",
+        "✦ Chanting: the commands you type unfold circles (mahojin --off to stop)",
     );
     let off = l.pick("✦ 詠唱モードを解きました", "✦ Chanting stopped");
     let taken = l.pick(
@@ -71,12 +71,12 @@ pub fn init(shell: &str, l: Locale) -> Option<String> {
     )
 }
 
-const ZSH: &str = r#"# mahojin: eval "$(mahojin init zsh)"
+const ZSH: &str = r#"# mahojin: eval "$(mahojin --init zsh)"
 mahojin() {
-  if (( $# == 1 )) && [[ $1 == on ]]; then
+  if (( $# == 1 )) && [[ $1 == --on ]]; then
     typeset -g _MAHOJIN_CHANTING=1
     print -u2 -r -- '{on}'
-  elif (( $# == 1 )) && [[ $1 == off ]]; then
+  elif (( $# == 1 )) && [[ $1 == --off ]]; then
     unset _MAHOJIN_CHANTING
     print -u2 -r -- '{off}'
   else
@@ -116,12 +116,12 @@ add-zsh-hook precmd _mahojin_precmd
 /// bash には preexec が無い。bash-preexec があればそれに乗り、無ければ DEBUG トラップで作る。
 /// DEBUG トラップはパイプの各コマンドやプロンプトのフックでも発火するので、
 /// 「プロンプトを出してから最初の、プロンプトのフックでないコマンド」でだけ動かす。
-const BASH: &str = r#"# mahojin: eval "$(mahojin init bash)"
+const BASH: &str = r#"# mahojin: eval "$(mahojin --init bash)"
 mahojin() {
-  if [[ $# -eq 1 && $1 == on ]]; then
+  if [[ $# -eq 1 && $1 == --on ]]; then
     _MAHOJIN_CHANTING=1
     printf '%s\n' '{on}' >&2
-  elif [[ $# -eq 1 && $1 == off ]]; then
+  elif [[ $# -eq 1 && $1 == --off ]]; then
     unset _MAHOJIN_CHANTING
     printf '%s\n' '{off}' >&2
   else
@@ -191,12 +191,12 @@ else
 fi
 "#;
 
-const FISH: &str = r#"# mahojin: mahojin init fish | source
+const FISH: &str = r#"# mahojin: mahojin --init fish | source
 function mahojin
-    if test (count $argv) -eq 1; and test "$argv[1]" = on
+    if test (count $argv) -eq 1; and test "$argv[1]" = --on
         set -g _mahojin_chanting 1
         echo '{on}' >&2
-    else if test (count $argv) -eq 1; and test "$argv[1]" = off
+    else if test (count $argv) -eq 1; and test "$argv[1]" = --off
         set -e _mahojin_chanting
         echo '{off}' >&2
     else

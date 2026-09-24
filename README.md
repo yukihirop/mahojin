@@ -105,19 +105,19 @@ you want a circle every time, but the seconds do add up.
 ### Chanting mode
 
 Sometimes you want a circle on every command, just for the length of a release. Add one line to your
-shell config, and between `mahojin on` and `mahojin off` the commands you type unfold circles.
+shell config, and between `mahojin --on` and `mahojin --off` the commands you type unfold circles.
 
 ```sh
-eval "$(mahojin init zsh)"     # ~/.zshrc
-eval "$(mahojin init bash)"    # ~/.bashrc
-mahojin init fish | source     # ~/.config/fish/config.fish
+eval "$(mahojin --init zsh)"     # ~/.zshrc
+eval "$(mahojin --init bash)"    # ~/.bashrc
+mahojin --init fish | source     # ~/.config/fish/config.fish
 ```
 
 ```console
-$ mahojin on
-✦ Chanting: the commands you type unfold circles (mahojin off to stop)
+$ mahojin --on
+✦ Chanting: the commands you type unfold circles (mahojin --off to stop)
 $ git tag v1.2.0 && git push --tags    # the whole line is one spell
-$ mahojin off
+$ mahojin --off
 ```
 
 It doesn't put `mahojin` in front of your commands. It draws the circle just before each command runs and

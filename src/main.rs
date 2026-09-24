@@ -64,8 +64,8 @@ fn usage(l: Locale) -> String {
        mahojin [options] \"<shell command>\"
        mahojin --setup [--locale <ja|en>]
        mahojin --grimoire
-       mahojin init <zsh|bash|fish>
-       mahojin on | off
+       mahojin --init <zsh|bash|fish>
+       mahojin --on | --off
 ",
     );
     for (flag, ja, en) in lines {
@@ -89,6 +89,10 @@ struct Options {
     shatter: Option<i32>,
     setup: bool,
     grimoire: bool,
+    /// `--init <shell>`: 詠唱モードのスクリプトを出す
+    init: Option<String>,
+    /// `--on` / `--off`。シェルの関数が読み込まれていれば、ここまで届かない
+    toggle: Option<bool>,
     help: bool,
     locale: Option<Locale>,
     svg_path: Option<String>,
@@ -102,8 +106,8 @@ enum ArgError {
     UnknownLocale(String),
     UnknownOption(String),
     NoCommand,
-    SetupWithCommand,
-    GrimoireWithCommand,
+    /// コマンドと一緒には使えないオプション
+    WithCommand(&'static str),
 }
 
 impl ArgError {
@@ -130,18 +134,10 @@ impl ArgError {
             ArgError::NoCommand => l
                 .pick("実行するコマンドがありません", "no command to run")
                 .into(),
-            ArgError::SetupWithCommand => l
-                .pick(
-                    "--setup はコマンドと一緒には使えません",
-                    "--setup can't be used with a command",
-                )
-                .into(),
-            ArgError::GrimoireWithCommand => l
-                .pick(
-                    "--grimoire はコマンドと一緒には使えません",
-                    "--grimoire can't be used with a command",
-                )
-                .into(),
+            ArgError::WithCommand(flag) => match l {
+                Locale::Ja => format!("{flag} はコマンドと一緒には使えません"),
+                Locale::En => format!("{flag} can't be used with a command"),
+            },
         }
     }
 }
@@ -172,6 +168,13 @@ fn parse_args(
             }
             "--setup" => opts.setup = true,
             "--grimoire" => opts.grimoire = true,
+            "--init" => {
+                args.pop_front();
+                let shell = args.front().ok_or(ArgError::MissingValue("--init"))?;
+                opts.init = Some(shell.clone());
+            }
+            "--on" => opts.toggle = Some(true),
+            "--off" => opts.toggle = Some(false),
             "--help" | "-h" => opts.help = true,
             "--svg" => {
                 args.pop_front();
@@ -197,10 +200,17 @@ fn parse_args(
     if opts.help {
         return Ok(());
     }
-    match (opts.setup, opts.grimoire, opts.command.is_empty()) {
-        (true, _, false) => Err(ArgError::SetupWithCommand),
-        (_, true, false) => Err(ArgError::GrimoireWithCommand),
-        (false, false, true) => Err(ArgError::NoCommand),
+    // コマンドを取らない操作
+    let alone = [
+        (opts.setup, "--setup"),
+        (opts.grimoire, "--grimoire"),
+        (opts.init.is_some(), "--init"),
+        (opts.toggle == Some(true), "--on"),
+        (opts.toggle == Some(false), "--off"),
+    ];
+    match alone.iter().find(|(on, _)| *on) {
+        Some((_, flag)) if !opts.command.is_empty() => Err(ArgError::WithCommand(flag)),
+        None if opts.command.is_empty() => Err(ArgError::NoCommand),
         _ => Ok(()),
     }
 }
@@ -247,22 +257,21 @@ fn main() -> ExitCode {
     if opts.grimoire {
         return open_grimoire(grimoire_path, l);
     }
-    let args = &opts.command;
-    match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        ["init", shell] => return init(shell, l),
-        // シェルの関数が読み込まれていれば、ここへは来ない
-        ["on"] | ["off"] => {
-            eprintln!(
-                "mahojin: {}",
-                l.pick(
-                    "mahojin on / off には、シェルの設定に mahojin init を書いてシェルを開き直してください（README の「詠唱モード」）",
-                    "mahojin on / off needs mahojin init in your shell config; then open a new shell (see \"Chanting mode\" in the README)",
-                )
-            );
-            return ExitCode::from(2);
-        }
-        _ => {}
+    if let Some(shell) = &opts.init {
+        return init(shell, l);
     }
+    // シェルの関数が読み込まれていれば、ここへは来ない
+    if opts.toggle.is_some() {
+        eprintln!(
+            "mahojin: {}",
+            l.pick(
+                "mahojin --on / --off には、シェルの設定に mahojin --init を書いてシェルを開き直してください（README の「詠唱モード」）",
+                "mahojin --on / --off needs mahojin --init in your shell config; then open a new shell (see \"Chanting mode\" in the README)",
+            )
+        );
+        return ExitCode::from(2);
+    }
+    let args = &opts.command;
 
     // 魔法陣を決めるのは、ユーザーが打ったコマンド文字列そのもの。
     let spell = args.join(" ");
@@ -731,6 +740,25 @@ mod tests {
     }
 
     #[test]
+    fn chanting_mode_is_driven_by_flags() {
+        assert_eq!(
+            parse(&["--init", "zsh"]).unwrap().init.as_deref(),
+            Some("zsh")
+        );
+        assert_eq!(parse(&["--init"]), Err(ArgError::MissingValue("--init")));
+        assert_eq!(parse(&["--on"]).unwrap().toggle, Some(true));
+        assert_eq!(parse(&["--off"]).unwrap().toggle, Some(false));
+        assert_eq!(parse(&["--on", "ls"]), Err(ArgError::WithCommand("--on")));
+        // 素の on や init は、そういう名前のコマンドとして唱える
+        let o = parse(&["on"]).unwrap();
+        assert_eq!((o.toggle, o.command), (None, cmd(&["on"])));
+        assert_eq!(
+            parse(&["init", "zsh"]).unwrap().command,
+            cmd(&["init", "zsh"])
+        );
+    }
+
+    #[test]
     fn shatter_flag_takes_the_exit_code() {
         let o = parse(&["--shatter", "2", "--", "make"]).unwrap();
         assert_eq!(o.shatter, Some(2));
@@ -782,11 +810,14 @@ mod tests {
         assert!(o.setup);
         assert_eq!(o.locale, Some(Locale::Ja));
         assert!(parse(&["--setup"]).unwrap().command.is_empty());
-        assert_eq!(parse(&["--setup", "ls"]), Err(ArgError::SetupWithCommand));
+        assert_eq!(
+            parse(&["--setup", "ls"]),
+            Err(ArgError::WithCommand("--setup"))
+        );
         assert!(parse(&["--grimoire"]).unwrap().grimoire);
         assert_eq!(
             parse(&["--grimoire", "ls"]),
-            Err(ArgError::GrimoireWithCommand)
+            Err(ArgError::WithCommand("--grimoire"))
         );
         assert_eq!(
             parse(&["--locale", "fr", "ls"]),

@@ -105,19 +105,19 @@ alias deploy='mahojin make deploy'    # 本番に出すとき
 ### 詠唱モード
 
 リリース作業のあいだだけ、全部のコマンドで魔法陣を見たいこともあります。シェルの設定に 1 行足すと、
-`mahojin on` から `mahojin off` までのあいだ、打ったコマンドに魔法陣が出ます。
+`mahojin --on` から `mahojin --off` までのあいだ、打ったコマンドに魔法陣が出ます。
 
 ```sh
-eval "$(mahojin init zsh)"     # ~/.zshrc
-eval "$(mahojin init bash)"    # ~/.bashrc
-mahojin init fish | source     # ~/.config/fish/config.fish
+eval "$(mahojin --init zsh)"     # ~/.zshrc
+eval "$(mahojin --init bash)"    # ~/.bashrc
+mahojin --init fish | source     # ~/.config/fish/config.fish
 ```
 
 ```console
-$ mahojin on
-✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（mahojin off で戻る）
+$ mahojin --on
+✦ 詠唱モード: 打ったコマンドに魔法陣が出ます（mahojin --off で戻る）
 $ git tag v1.2.0 && git push --tags    # この行全体が 1 つの呪文になる
-$ mahojin off
+$ mahojin --off
 ```
 
 コマンドの前に `mahojin` を足すのではなく、実行の直前に魔法陣だけを描いて、実行はシェルに任せます。
