@@ -20,20 +20,40 @@ const PIXELS_PER_ROW: u32 = 32;
 /// 画像の一辺の上限。これより大きく出すときは端末に引き伸ばしてもらう。
 /// 1152px（36 行）を焼くと展開が 2 秒を超え、コマンドを待たせてしまう。
 const MAX_PIXELS: u32 = 768;
-/// Kitty に送る画像の ID。コマを差し替えるために毎回同じ値を使う。
-const IMAGE_ID: u32 = 0x6d61; // "ma"
-/// tmux の中で Unicode placeholder に使う画像の ID。文字色（256 色）で伝えるので 8 bit に収める。
-const PLACEHOLDER_ID: u32 = 0x6d; // "m"
 /// Unicode placeholder の文字と、行・列の番号を表す結合文字（kitty の rowcolumn-diacritics.txt の先頭）。
-/// 魔法陣は最大 36 行なので、それだけあれば足りる。
+/// 魔法陣は最大 48 行（神聖魔法）なので、それだけあれば足りる。
 const PLACEHOLDER: char = '\u{10EEEE}';
-const DIACRITICS: [char; 36] = [
+const DIACRITICS: [char; 48] = [
     '\u{0305}', '\u{030D}', '\u{030E}', '\u{0310}', '\u{0312}', '\u{033D}', '\u{033E}', '\u{033F}',
     '\u{0346}', '\u{034A}', '\u{034B}', '\u{034C}', '\u{0350}', '\u{0351}', '\u{0352}', '\u{0357}',
     '\u{035B}', '\u{0363}', '\u{0364}', '\u{0365}', '\u{0366}', '\u{0367}', '\u{0368}', '\u{0369}',
     '\u{036A}', '\u{036B}', '\u{036C}', '\u{036D}', '\u{036E}', '\u{036F}', '\u{0483}', '\u{0484}',
-    '\u{0485}', '\u{0486}', '\u{0487}', '\u{0592}',
+    '\u{0485}', '\u{0486}', '\u{0487}', '\u{0592}', '\u{0593}', '\u{0594}', '\u{0595}', '\u{0597}',
+    '\u{0598}', '\u{0599}', '\u{059C}', '\u{059D}', '\u{059E}', '\u{059F}', '\u{05A0}', '\u{05A1}',
 ];
+
+/// Kitty に送る画像の ID。1 回の展開のあいだは同じ ID でコマを差し替え、展開ごとには変える。
+/// 同じ ID で送り直すと前の画像が消えるので、固定すると、前に唱えた魔法陣や、
+/// 砕ける前に展開した魔法陣まで消えてしまう。
+fn fresh_id() -> u32 {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static CALLS: AtomicU32 = AtomicU32::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    let mixed = (std::process::id().wrapping_mul(0x9e37_79b9) ^ nanos).wrapping_add(
+        CALLS
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_mul(0x85eb_ca6b),
+    );
+    mixed.max(1)
+}
+
+/// tmux の中で Unicode placeholder に使う画像の ID。文字色（256 色）で伝えるので 1〜255 に収める。
+/// 前の魔法陣と重なる見込みは 255 分の 1 になる。
+fn placeholder_id(id: u32) -> u32 {
+    1 + id % 255
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
@@ -179,6 +199,7 @@ pub fn play(
     // 1 コマの変換に 0.1 秒ほどかかる。全コマを並列で焼きつつ、焼けた順に
     // 決まった間隔で流す。全部焼いてから流すと、その時間ぶん待たされる。
     let pngs = rasterize_in_background(frames, (rows * PIXELS_PER_ROW).min(MAX_PIXELS));
+    let id = fresh_id();
 
     let mut err = io::stderr().lock();
     let mut out = |bytes: &[u8]| err.write_all(bytes).and_then(|_| err.flush());
@@ -190,19 +211,21 @@ pub fn play(
     // tmux で Kitty なら、画像を載せるマスを先に文字で敷いておく
     let cols = target.tmux.map(|p| placeholder_cols(p, rows));
     if let (Some(cols), Protocol::Kitty) = (cols, protocol) {
-        out(placeholders(rows, cols).as_bytes()).map_err(io)?;
+        out(placeholders(rows, cols, placeholder_id(id)).as_bytes()).map_err(io)?;
     }
     let mut next = Instant::now();
     for rx in pngs {
         let png = rx.recv().map_err(|e| e.to_string())??;
         std::thread::sleep(next.saturating_duration_since(Instant::now()));
         let seq = match (target.tmux, protocol) {
-            (None, Protocol::Kitty) => format!("\x1b8{}", kitty(&png, rows).concat()),
+            (None, Protocol::Kitty) => format!("\x1b8{}", kitty(&png, rows, id).concat()),
             (None, Protocol::Iterm) => format!("\x1b8{}", iterm(&png, rows)),
-            (Some(_), Protocol::Kitty) => kitty_virtual(&png, rows, cols.unwrap_or(rows * 2))
-                .iter()
-                .map(|s| passthrough(s))
-                .collect(),
+            (Some(_), Protocol::Kitty) => {
+                kitty_virtual(&png, rows, cols.unwrap_or(rows * 2), placeholder_id(id))
+                    .iter()
+                    .map(|s| passthrough(s))
+                    .collect()
+            }
             (Some(pane), Protocol::Iterm) => {
                 // tmux は画像を知らないので、外側の画面での位置を直に指して描き、カーソルを戻す
                 let (row, col) = pane.origin(rows);
@@ -239,12 +262,12 @@ fn placeholder_cols(pane: Pane, rows: u32) -> u32 {
     cols.clamp(1, pane.width.max(1))
 }
 
-/// Unicode placeholder を `rows` 行 × `cols` 列敷く。文字色で画像 ID を伝える。
+/// Unicode placeholder を `rows` 行 × `cols` 列敷く。文字色で画像 ID（`id`）を伝える。
 /// 各行の先頭のマスにだけ行と列の番号を付ける。後ろのマスは左隣から続きの列とみなされる。
-fn placeholders(rows: u32, cols: u32) -> String {
+fn placeholders(rows: u32, cols: u32, id: u32) -> String {
     let mut s = String::new();
     for r in 0..rows as usize {
-        s.push_str(&format!("\x1b[38;5;{PLACEHOLDER_ID}m"));
+        s.push_str(&format!("\x1b[38;5;{id}m"));
         s.push(PLACEHOLDER);
         s.push(DIACRITICS[r.min(DIACRITICS.len() - 1)]);
         s.push(DIACRITICS[0]);
@@ -308,17 +331,14 @@ pub fn rasterize(svg: &str, pixels: u32) -> Result<Vec<u8>, String> {
 /// Kitty graphics protocol。ペイロードは 4096 バイトずつに分けて送る決まり。
 /// `q=2` で端末からの応答を止める。止めないと応答が子プロセスの stdin に混ざる。
 /// 毎コマ同じ画像 ID で送ると前のコマが消えて差し替わる。`C=1` でカーソルを動かさない。
-fn kitty(png: &[u8], rows: u32) -> Vec<String> {
-    kitty_chunks(png, &format!("f=100,a=T,i={IMAGE_ID},p=1,C=1,q=2,r={rows}"))
+fn kitty(png: &[u8], rows: u32, id: u32) -> Vec<String> {
+    kitty_chunks(png, &format!("f=100,a=T,i={id},p=1,C=1,q=2,r={rows}"))
 }
 
 /// tmux 用。画像を送ると同時に、敷いておいた placeholder に載せる仮想の置き場所を作る（`U=1`）。
 /// 同じ ID で送り直すと前の置き場所は消えるので、コマごとに作り直す。
-fn kitty_virtual(png: &[u8], rows: u32, cols: u32) -> Vec<String> {
-    kitty_chunks(
-        png,
-        &format!("f=100,a=T,U=1,i={PLACEHOLDER_ID},q=2,c={cols},r={rows}"),
-    )
+fn kitty_virtual(png: &[u8], rows: u32, cols: u32, id: u32) -> Vec<String> {
+    kitty_chunks(png, &format!("f=100,a=T,U=1,i={id},q=2,c={cols},r={rows}"))
 }
 
 /// 1 つの画像を、先頭だけに `keys` を付けたエスケープシーケンスの列にする。
@@ -429,11 +449,11 @@ mod tests {
 
     #[test]
     fn placeholders_cover_the_image() {
-        let s = placeholders(3, 5);
+        let s = placeholders(3, 5, 42);
         assert_eq!(s.matches(PLACEHOLDER).count(), 15);
         // 行ごとに先頭のマスだけ、行番号と列 0 の結合文字が付く
         for (r, line) in s.split("\r\n").enumerate() {
-            assert!(line.starts_with(&format!("\x1b[38;5;{PLACEHOLDER_ID}m")));
+            assert!(line.starts_with("\x1b[38;5;42m"));
             let mut chars = line.chars().skip_while(|&c| c != PLACEHOLDER).skip(1);
             assert_eq!(chars.next(), Some(DIACRITICS[r]));
             assert_eq!(chars.next(), Some(DIACRITICS[0]));
@@ -450,6 +470,24 @@ mod tests {
         // ペインより広くはしない
         assert_eq!(placeholder_cols(pane, 24), 30);
         assert_eq!(placeholder_cols(Pane { cell: None, ..pane }, 8), 16);
+    }
+
+    #[test]
+    fn every_row_of_the_largest_circle_has_its_own_number() {
+        let mut holy = crate::circle::MagicCircle::from_command("x");
+        holy.sanctify();
+        assert!(DIACRITICS.len() >= holy.rows() as usize);
+        let rows: std::collections::HashSet<char> = DIACRITICS.into_iter().collect();
+        assert_eq!(rows.len(), DIACRITICS.len());
+    }
+
+    #[test]
+    fn each_unfolding_gets_its_own_image() {
+        let (a, b) = (fresh_id(), fresh_id());
+        assert!(a != 0 && b != 0 && a != b);
+        for id in [a, b, 0, 254, 255, u32::MAX] {
+            assert!((1..=255).contains(&placeholder_id(id)), "{id}");
+        }
     }
 
     #[test]
@@ -480,17 +518,17 @@ mod tests {
             passthrough("\x1b_Ga\x1b\\"),
             "\x1bPtmux;\x1b\x1b_Ga\x1b\x1b\\\x1b\\"
         );
-        let chunks = kitty_virtual(&vec![0u8; 10_000], 16, 32);
+        let chunks = kitty_virtual(&vec![0u8; 10_000], 16, 32, 109);
         assert!(chunks[0].starts_with("\x1b_Gf=100,a=T,U=1,i=109,q=2,c=32,r=16,m=1;"));
         assert!(chunks.iter().all(|c| c.ends_with("\x1b\\")));
     }
 
     #[test]
     fn kitty_chunks_are_well_formed() {
-        let seq = kitty(&vec![0u8; 10_000], 16).concat();
+        let seq = kitty(&vec![0u8; 10_000], 16, 7).concat();
         let parts: Vec<&str> = seq.split("\x1b\\").filter(|p| !p.is_empty()).collect();
         assert!(parts.len() > 1);
-        assert!(parts[0].starts_with("\x1b_Gf=100,a=T,"));
+        assert!(parts[0].starts_with("\x1b_Gf=100,a=T,i=7,"));
         assert!(parts[0].contains(",C=1,q=2,r=16,"));
         assert!(parts[0].contains("m=1;"));
         assert!(parts.last().unwrap().starts_with("\x1b_Gm=0;"));
